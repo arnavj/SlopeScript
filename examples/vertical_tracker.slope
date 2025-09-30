@@ -1,0 +1,40 @@
+## 5. vertical_tracker.slope
+```
+summit
+  pack totalVertical = 0
+  pack runs = ["Corbet's Couloir", "KT-22", "Delirium Dive", "Rambo", "Steep Gullies"]
+  pack verticals = [2500, 3000, 2800, 2200, 2600]
+  pack index = 0
+  
+  carve "🏔️ VERTICAL FEET TRACKER"
+  carve "━━━━━━━━━━━━━━━━━━━━━"
+  carve ""
+  
+  liftline run in runs
+    carve "Dropping into:"
+    carve run
+    
+    pack thisVertical = verticals[index]
+    carve "Vertical:"
+    carve thisVertical
+    carve "feet"
+    
+    pack totalVertical = totalVertical + thisVertical
+    pack index = index + 1
+    
+    carve ""
+  liftline
+  
+  carve "━━━━━━━━━━━━━━━━━━━━━"
+  carve "TOTAL VERTICAL:"
+  carve totalVertical
+  carve "FEET! 🎿"
+  
+  greenCircle (totalVertical < 10000)
+    carve "Good warmup day!"
+  blueSquare (totalVertical < 20000)
+    carve "Solid day on the mountain!"
+  blackDiamond
+    carve "EPIC day! You crushed it! 💪"
+lodge
+```

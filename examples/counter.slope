@@ -1,0 +1,14 @@
+## 2. counter.slope
+```
+summit
+  pack count = 1
+  
+  gondola (count <= 5)
+    carve "Count:"
+    carve count
+    pack count = count + 1
+  gondola
+  
+  carve "Done counting!"
+lodge
+```

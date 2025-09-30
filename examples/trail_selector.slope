@@ -1,0 +1,35 @@
+## 6. trail_selector.slope
+```
+summit
+  pack difficulty = chairlift("What's your skill level? (beginner/intermediate/expert)")
+  
+  carve ""
+  carve "🎿 Recommended trails for you:"
+  carve ""
+  
+  greenCircle (difficulty == "beginner")
+    pack trails = ["Bunny Hill", "Easy Street", "Gentle Slopes"]
+    liftline trail in trails
+      carve "✓"
+      carve trail
+    liftline
+  blueSquare (difficulty == "intermediate")
+    pack trails = ["Blue Bird", "Cruiser", "Mountain View"]
+    liftline trail in trails
+      carve "✓"
+      carve trail
+    liftline
+  blueSquare (difficulty == "expert")
+    pack trails = ["Corbet's Couloir", "The Widow Maker", "Death Chute"]
+    liftline trail in trails
+      carve "✓"
+      carve trail
+    liftline
+  blackDiamond
+    carve "Invalid skill level!"
+    carve "Please choose: beginner, intermediate, or expert"
+  
+  carve ""
+  carve "Have a great day on the slopes! 🏂"
+lodge
+```

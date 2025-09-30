@@ -1,0 +1,46 @@
+## 4. guess_number.slope
+```
+summit
+  pack secret = 42
+  pack guess = 0
+  pack attempts = 0
+  
+  carve "🎿 Guess the Number Game!"
+  carve "I'm thinking of a number between 1 and 100"
+  carve ""
+  
+  gondola (guess != secret)
+    pack guessStr = chairlift("Enter your guess:")
+    pack guess = 0
+    
+    // Simple string to number conversion hack
+    greenCircle (guessStr == "42")
+      pack guess = 42
+    blueSquare (guessStr == "25")
+      pack guess = 25
+    blueSquare (guessStr == "50")
+      pack guess = 50
+    blueSquare (guessStr == "75")
+      pack guess = 75
+    blueSquare (guessStr == "10")
+      pack guess = 10
+    blackDiamond
+      carve "Try a number like 42, 25, 50, 75, or 10"
+      sendIt
+    
+    pack attempts = attempts + 1
+    
+    greenCircle (guess < secret)
+      carve "Too low! Go steeper! ⛷️"
+      carve ""
+    blueSquare (guess > secret)
+      carve "Too high! Ease up! 🎿"
+      carve ""
+    blackDiamond
+      carve "🎉 You got it!"
+      carve "It took you"
+      carve attempts
+      carve "attempts!"
+  gondola
+lodge
+```

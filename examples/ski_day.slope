@@ -1,0 +1,39 @@
+## 3. ski_day.slope
+```
+summit
+  pack runs = 0
+  pack verticalFeet = 0
+  pack maxRuns = 10
+  
+  carve "🎿 Welcome to SlopeScript Mountain! 🏔️"
+  carve ""
+  
+  gondola (runs < maxRuns)
+    pack runs = runs + 1
+    pack thisRun = 2500
+    pack verticalFeet = verticalFeet + thisRun
+    
+    carve "Run #"
+    carve runs
+    carve "- Dropped"
+    carve thisRun
+    carve "feet!"
+    
+    greenCircle (runs < 3)
+      carve "  → Warming up on groomers..."
+    blueSquare (runs < 7)
+      carve "  → Getting into the groove!"
+    blackDiamond
+      carve "  → Sending it! 💨"
+    
+    carve ""
+  gondola
+  
+  carve "━━━━━━━━━━━━━━━━━━━━━"
+  carve "Session complete!"
+  carve "Total vertical:"
+  carve verticalFeet
+  carve "feet!"
+  carve "Time for hot chocolate! ☕"
+lodge
+```
