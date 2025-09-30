@@ -1,0 +1,39 @@
+## 8. conditions_check.slope
+```
+summit
+  pack snowfall = 8
+  pack temperature = 25
+  pack windSpeed = 10
+  
+  carve "❄️ MOUNTAIN CONDITIONS CHECK"
+  carve "━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  carve ""
+  
+  carve "Overnight snowfall:"
+  carve snowfall
+  carve "inches"
+  
+  carve "Temperature:"
+  carve temperature
+  carve "°F"
+  
+  carve "Wind speed:"
+  carve windSpeed
+  carve "mph"
+  
+  carve ""
+  carve "CONDITIONS:"
+  
+  greenCircle (snowfall > 6 && windSpeed < 15)
+    carve "🎉 POWDER DAY! Drop everything!"
+  blueSquare (snowfall > 3 && temperature > 20)
+    carve "Great conditions! Get out there!"
+  blueSquare (temperature < 15 || windSpeed > 20)
+    carve "⚠️ Challenging conditions - bundle up!"
+  blackDiamond
+    carve "Average conditions - still worth it!"
+  
+  carve ""
+  carve "Have fun and stay safe! 🏔️"
+lodge
+```
