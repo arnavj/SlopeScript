@@ -2,290 +2,267 @@
   <img src="logo.svg" alt="SlopeScript Logo" width="300">
 </p>
 
-# 🎿 SlopeScript
+<h1 align="center">🎿 SlopeScript</h1>
 
-A skiing-themed programming language where code flows downhill like a skier on a mountain!
+<p align="center">
+  <b>A programming language where code flows downhill.</b><br>
+  Real functions, real data structures, real error handling — with fresh powder on top.
+</p>
 
-```
+<p align="center">
+  <img alt="Python 3.8+" src="https://img.shields.io/badge/python-3.8%2B-blue">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-orange">
+  <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-brightgreen">
+</p>
+
+```slopescript
 summit
-  carve "Shred the gnar! 🏔️"
+  trick fibonacci(n)
+    greenCircle (n < 2)
+      stomp n
+    runout
+    stomp fibonacci(n - 1) + fibonacci(n - 2)
+  nail
+
+  liftline i in laps(10)
+    carve "fib(" + i + ") =", fibonacci(i)
+  runout
 lodge
 ```
+
+Every program starts at the **summit** and ends at the **lodge**. In between you
+pack gear (variables), carve output into the snow, ride gondolas (while loops)
+and liftlines (for loops), land tricks (functions), and when things go wrong,
+ski patrol (error handling) has your back.
+
+SlopeScript is a real, working language: first-class functions with recursion,
+arrays and dictionaries, a 40-function standard library, precise error messages
+with line numbers, an interactive REPL, and a zero-dependency single-file
+interpreter.
 
 ## 🏔️ Installation
 
-### Requirements
-- Python 3.7 or higher
+Requires Python 3.8+. No dependencies.
 
-### Quick Start
-
-1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/slopescript.git
+git clone https://github.com/arnavj/slopescript.git
 cd slopescript
+pip install .
 ```
 
-2. Make the interpreter executable (optional):
+That gives you the `slope` command:
+
 ```bash
-chmod +x slopescript.py
+slope examples/hello.slope   # run a program
+slope                        # interactive REPL
+slope --version
 ```
 
-3. Run your first program:
+No pip? The interpreter is a single file — just run it directly:
+
 ```bash
-python slopescript.py examples/hello.slope
+python3 slopescript.py examples/hello.slope
 ```
 
-## 📚 Language Guide
+## ⛷️ The 60-second tour
 
-### Basic Structure
+### Variables — pack your gear
 
-Every SlopeScript program starts at the `summit` and ends at the `lodge`:
-
-```
+```slopescript
 summit
-  // Your code flows downhill here
+  pack speed = 45
+  pack name = "Tony"
+  pack isReady = powder      // powder = true, ice = false
+  pack nothing = whiteout    // whiteout = null
+
+  speed += 5                 // +=, -=, *=, /= all work
+  carve "Hi", name, "- speed is", speed
 lodge
 ```
 
-### Variables (Gear)
+### Output & input — carve and ride the chairlift
 
-Pack your variables like gear for a ski trip:
-
-```
-pack speed = 45
-pack name = "Tony"
-pack isReady = powder  // powder = true, ice = false
-```
-
-### Output (Carve)
-
-Carve your output into the snow:
-
-```
-carve "Hello, skier!"
-carve speed
+```slopescript
+carve "Hello, skier!"                 // print (multiple values, comma-separated)
+carve "Total: " + 3 * 800 + " feet"   // + joins text with anything
+pack answer = chairlift("Your name?") // prompt for input
+pack age = number(chairlift("Age?"))  // convert text to a number
 ```
 
-### Input (Chairlift)
+### Conditionals — pick your trail
 
-Get user input via the chairlift:
+Rated like real trails: `greenCircle` (if), `blueSquare` (else if),
+`blackDiamond` (else). Every block ends at the `runout` — the flat bit at the
+bottom of a slope.
 
-```
-pack name = chairlift("What's your name?")
-carve "Welcome,"
-carve name
-```
-
-### Conditionals (Trail Ratings)
-
-Choose your path based on conditions:
-
-```
-pack speed = 35
-
+```slopescript
 greenCircle (speed < 20)
-  carve "Taking it easy!"
+  carve "Cruising the bunny slope"
 blueSquare (speed < 40)
-  carve "Nice cruising speed"
+  carve "Solid blue-square pace"
 blackDiamond
-  carve "You're flying!"
+  carve "Absolutely sending it 💨"
+runout
 ```
 
-- `greenCircle` = if statement (beginner trail)
-- `blueSquare` = else if statement (intermediate trail)
-- `blackDiamond` = else statement (expert terrain)
+### Loops — gondolas and liftlines
 
-### Loops
-
-**Gondola** (while loop):
-```
+```slopescript
+// gondola = while loop
 pack laps = 0
-
 gondola (laps < 5)
-  carve "Lap"
-  carve laps
-  pack laps = laps + 1
-gondola
+  laps += 1
+  carve "Lap", laps
+runout
+
+// liftline = for-each loop (racks, text, lockers, or laps(n) for counting)
+liftline skier in ["Alice", "Bob", "Charlie"]
+  carve skier, "drops in!"
+runout
+
+liftline i in laps(3)      // 0, 1, 2
+  carve i
+runout
 ```
 
-**Liftline** (for-each loop):
-```
-pack skiers = ["Alice", "Bob", "Charlie"]
+`bail` breaks out of a loop; `sendIt` continues to the next iteration.
 
-liftline skier in skiers
-  carve skier
-  carve "is dropping in!"
-liftline
+### Tricks — functions
+
+```slopescript
+trick verticalPerRun(total, runs)
+  greenCircle (runs == 0)
+    stomp 0                 // stomp = return (stomp the landing!)
+  runout
+  stomp round(total / runs)
+nail                        // nail finishes the trick
+
+carve verticalPerRun(24000, 9), "feet per run"
 ```
 
-### Arrays (Ski Racks)
+Tricks support recursion, local scope, and closures. They're proper functions.
 
-```
+### Racks & lockers — arrays and dictionaries
+
+```slopescript
 pack trails = ["Corbet's", "KT-22", "Delirium Dive"]
-carve trails[0]  // Corbet's
+carve trails[0], "of", length(trails)
+push(trails, "Rambo")
+trails[1] = "Chute 75"
 
-pack scores = [95, 87, 92]
-carve scores[1]  // 87
+pack lift = { name: "Big Red", capacity: 6, express: powder }
+carve lift.name             // dot access
+carve lift["capacity"]      // or bracket access
+lift.express = ice          // assign either way
+carve keys(lift), values(lift)
 ```
 
-### Comments
+### Ski patrol — error handling
 
-```
-// Single line comment - like a pole mark in snow
-
-/* Multi-line comment
-   Like tracks across
-   fresh powder */
-```
-
-### Control Flow
-
-```
-// Break out of a loop
-bail
-
-// Continue to next iteration
-sendIt
+```slopescript
+patrol                                  // try
+  pack n = number(chairlift("Number?"))
+  greenCircle (n < 0)
+    avalanche "no negative numbers!"    // throw (any value, even a locker)
+  runout
+  carve 100 / n
+patroller (whoops)                      // catch
+  carve "⛑️ Patrol caught it:", whoops
+runout
 ```
 
-### Operators
+Uncaught problems produce friendly reports with the file and line:
 
-**Arithmetic:**
-- `+` addition
-- `-` subtraction  
-- `*` multiplication
-- `/` division
+```
+⛑️  Ski Patrol Report (run.slope, line 7): Yard sale! Division by zero
+```
 
-**Comparison:**
-- `<` less than (gentler slope)
-- `>` greater than (steeper slope)
-- `==` equal to
-- `!=` not equal to
-- `<=` less than or equal
-- `>=` greater than or equal
+## 🛖 The Base Lodge (standard library)
 
-**Logical:**
-- `&&` and (parallel - both true)
-- `||` or (moguls - either true)
-- `!` not (wipeout)
+Around 40 built-in functions, no imports needed. Highlights:
 
-**Boolean Values:**
-- `powder` = true
-- `ice` = false
+| Category | Functions |
+|---|---|
+| I/O | `chairlift(prompt)` |
+| Convert | `number(x)`, `text(x)`, `type(x)` |
+| Racks | `length`, `push`, `pop`, `laps(n)`, `groom` (sort), `flip` (reverse), `contains`, `find`, `slice`, `join`, `sum`, `min`, `max` |
+| Text | `upper`, `lower`, `trim`, `split`, `replace`, `startsWith`, `endsWith` |
+| Lockers | `keys`, `values`, `has`, `drop` |
+| Math | `abs`, `round`, `basin` (floor), `cornice` (ceil), `sqrt`, `snowflake` (random) |
+| Misc | `clock()` |
 
-## 🎯 Example Programs
+Familiar aliases work too: `range`, `sort`, `reverse`, `floor`, `ceil`, `random`.
+Full reference in [LANGUAGE_SPEC.md](LANGUAGE_SPEC.md).
 
-Check out the `examples/` folder for sample programs:
+## 🎮 REPL
 
-- `hello.slope` - Classic Hello World
-- `counter.slope` - Simple counting loop
-- `ski_day.slope` - Simulates a day on the slopes
-- `guess_number.slope` - Interactive guessing game
-- `vertical_tracker.slope` - Tracks vertical feet skied
-- `conditions_check.slope` - Checks mountain conditions
-- `speed_calculator.slope` - Calculates skiing speed
-- `trail_selector.slope` - Interactive trail selector
+```
+$ slope
+🏔️  SlopeScript 2.0.0 — fresh corduroy, no waiting.
 
-## 🚀 Running Programs
+⛷️  pack x = 21
+⛷️  x * 2
+42
+⛷️  trick double(n)
+···   stomp n * 2
+··· nail
+⛷️  double(1200)
+2400
+⛷️  apres
+🌙 Last run of the day. See you at first chair!
+```
+
+Expressions echo their value, blocks stay open across lines until you close
+them, and state persists for the whole session.
+
+## 🎯 Examples
+
+Every program in [`examples/`](examples/) runs out of the box:
+
+| Program | Shows off |
+|---|---|
+| [`hello.slope`](examples/hello.slope) | The classic |
+| [`counter.slope`](examples/counter.slope) | Gondola loops |
+| [`ski_day.slope`](examples/ski_day.slope) | Loops + trail ratings together |
+| [`tricks.slope`](examples/tricks.slope) | Functions, returns, recursion |
+| [`lodge_menu.slope`](examples/lodge_menu.slope) | Lockers (dictionaries) |
+| [`ski_patrol.slope`](examples/ski_patrol.slope) | Error handling |
+| [`vertical_tracker.slope`](examples/vertical_tracker.slope) | Racks of lockers |
+| [`guess_number.slope`](examples/guess_number.slope) | Input, random numbers, patrol |
+| [`trail_selector.slope`](examples/trail_selector.slope) | Lockers as lookup tables |
+| [`speed_calculator.slope`](examples/speed_calculator.slope) | Math builtins |
+| [`conditions_check.slope`](examples/conditions_check.slope) | Logical operators |
+
+## 🗺️ Cheat sheet
+
+| SlopeScript | Means | SlopeScript | Means |
+|---|---|---|---|
+| `summit` / `lodge` | program start / end | `trick` / `nail` | define function |
+| `pack x = 1` | declare variable | `stomp v` | return |
+| `carve a, b` | print | `patrol` / `patroller` | try / catch |
+| `chairlift(p)` | input | `avalanche v` | throw |
+| `greenCircle` | if | `bail` | break |
+| `blueSquare` | else if | `sendIt` | continue |
+| `blackDiamond` | else | `powder` / `ice` | true / false |
+| `gondola` | while | `whiteout` | null |
+| `liftline x in r` | for-each | `runout` | end of block |
+
+## 🧪 Development
 
 ```bash
-python slopescript.py <filename.slope>
+python3 -m unittest discover tests    # run the test suite (90 tests)
 ```
 
-Or make it executable:
-```bash
-./slopescript.py <filename.slope>
-```
+The whole language lives in [`slopescript.py`](slopescript.py) — lexer, parser,
+interpreter, standard library, REPL, and CLI. Read it top to bottom in one
+sitting; it's a nice little tour of how languages work.
 
-## 📖 Full Language Specification
-
-For complete language documentation, see [LANGUAGE_SPEC.md](LANGUAGE_SPEC.md)
-
-## 🛠️ Current Features
-
-- ✅ Variables and assignment
-- ✅ Arithmetic operations
-- ✅ Comparison and logical operators
-- ✅ Conditionals (if/else if/else)
-- ✅ While loops
-- ✅ For-each loops
-- ✅ Arrays and indexing
-- ✅ User input
-- ✅ Comments
-- ✅ Break and continue
-
-## 🚧 Planned Features
-
-- [ ] Functions (tricks)
-- [ ] Error handling (ski patrol)
-- [ ] Hash maps/objects (lockers)
-- [ ] String operations
-- [ ] File I/O
-- [ ] Standard library
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-
-- Add new features
-- Fix bugs
-- Improve documentation
-- Create example programs
-- Suggest language improvements
-
-Please open an issue or pull request on GitHub.
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
-
-## 🎿 Philosophy
-
-SlopeScript embraces the flow and rhythm of skiing. Code should read like planning and executing ski runs - starting at the top, making decisions on the fly, and finishing with style at the bottom!
-
-## 💡 Examples
-
-### Hello World
-```
-summit
-  carve "🎿 Hello, World!"
-lodge
-```
-
-### Calculate Vertical Feet
-```
-summit
-  pack runsCompleted = 0
-  pack totalVertical = 0
-  pack maxRuns = 5
-  
-  gondola (runsCompleted < maxRuns)
-    pack runsCompleted = runsCompleted + 1
-    pack thisRun = 2500
-    pack totalVertical = totalVertical + thisRun
-    
-    carve "Run #"
-    carve runsCompleted
-    carve "- Dropped"
-    carve thisRun
-    carve "feet!"
-  gondola
-  
-  carve "Session complete! Total vertical:"
-  carve totalVertical
-  carve "feet!"
-lodge
-```
-
-### Interactive Name Greeter
-```
-summit
-  pack name = chairlift("What's your name, skier?")
-  carve "Welcome to the mountain,"
-  carve name
-  carve "! Let's shred! 🎿"
-lodge
-```
+MIT — see [LICENSE](LICENSE).
 
 ---
 
