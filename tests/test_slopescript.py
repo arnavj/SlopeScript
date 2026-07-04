@@ -6,6 +6,7 @@ Run with:  python3 -m unittest discover tests
 
 import io
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -600,6 +601,174 @@ class TestSnippets(unittest.TestCase):
             run_source('pack x = 10', interp, snippet=True)
             run_source('carve x * 2', interp, snippet=True)
         self.assertEqual(out.getvalue(), "20\n")
+
+
+class TestInterpolation(unittest.TestCase):
+    def test_basic(self):
+        code = program('pack name = "Tony"\ncarve "Hi {name}!"')
+        self.assertEqual(run(code), "Hi Tony!\n")
+
+    def test_expressions(self):
+        code = program('pack runs = 9\ncarve "{runs} runs, {runs * 2500} feet, avg {25000 / 10}"')
+        self.assertEqual(run(code), "9 runs, 22500 feet, avg 2500\n")
+
+    def test_calls_and_nested_braces(self):
+        code = program('carve "sorted: {groom([3, 1, 2])} keys: {keys({a: 1})}"')
+        self.assertEqual(run(code), 'sorted: [1, 2, 3] keys: ["a"]\n')
+
+    def test_escaped_and_empty_braces(self):
+        code = program(r'carve "literal \{x} and {}"')
+        self.assertEqual(run(code), "literal {x} and {}\n")
+
+    def test_strings_inside_interpolation(self):
+        code = program('carve "{upper("pow") + "!"}"')
+        self.assertEqual(run(code), "POW!\n")
+
+    def test_unclosed_interpolation_errors(self):
+        with self.assertRaises(SlopeSyntaxError):
+            compile_source(program('carve "oops {1 + 2"'))
+
+    def test_bad_expression_inside(self):
+        with self.assertRaises(SlopeSyntaxError) as ctx:
+            compile_source(program('carve "x {1 +} y"'))
+        self.assertIn("interpolation", str(ctx.exception))
+
+    def test_single_quotes_interpolate_too(self):
+        self.assertEqual(run(program("carve 'total {1 + 1}'")), "total 2\n")
+
+
+class TestFirstClassTricks(unittest.TestCase):
+    def test_store_and_call(self):
+        code = program("""
+trick double(n)
+  stomp n * 2
+nail
+pack f = double
+carve f(21)
+""")
+        self.assertEqual(run(code), "42\n")
+
+    def test_pass_to_trick(self):
+        code = program("""
+trick apply(fn, value)
+  stomp fn(value)
+nail
+trick negate(n)
+  stomp -n
+nail
+carve apply(negate, 5)
+""")
+        self.assertEqual(run(code), "-5\n")
+
+    def test_anonymous_trick(self):
+        code = program('pack sq = trick(n)\n  stomp n * n\nrunout\ncarve sq(6)')
+        self.assertEqual(run(code), "36\n")
+
+    def test_trick_in_rack_and_locker(self):
+        code = program("""
+pack ops = { double: trick(x) stomp x * 2 runout }
+pack rack = [trick(x) stomp x + 1 runout]
+carve ops.double(21), rack[0](41)
+""")
+        self.assertEqual(run(code), "42 42\n")
+
+    def test_builtin_as_value(self):
+        code = program('pack f = groom\ncarve f([2, 1]), type(f)')
+        self.assertEqual(run(code), "[1, 2] trick\n")
+
+    def test_map_filter_reduce(self):
+        code = program("""
+pack nums = [1, 2, 3, 4, 5]
+carve map(nums, trick(n) stomp n * n runout)
+carve filter(nums, trick(n) stomp n % 2 == 1 runout)
+carve reduce(nums, trick(a, b) stomp a + b runout)
+carve reduce([], trick(a, b) stomp a + b runout, 100)
+""")
+        self.assertEqual(run(code), "[1, 4, 9, 16, 25]\n[1, 3, 5]\n15\n100\n")
+
+    def test_closure_captures(self):
+        code = program("""
+trick makeCounter()
+  pack count = 0
+  stomp trick()
+    count += 1
+    stomp count
+  runout
+nail
+pack tick = makeCounter()
+carve tick(), tick(), tick()
+""")
+        self.assertEqual(run(code), "1 2 3\n")
+
+    def test_calling_non_trick_errors(self):
+        with self.assertRaises(SlopeRuntimeError) as ctx:
+            run(program('pack x = 5\npack y = x(1)'))
+        self.assertIn("can't be called", str(ctx.exception))
+
+    def test_reduce_empty_without_start_errors(self):
+        with self.assertRaises(SlopeRuntimeError):
+            run(program('reduce([], trick(a, b) stomp a runout)'))
+
+
+class TestFilesAndTraverse(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.dir.name)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_write_read_append_delete(self):
+        p = str(self.root / "journal.txt")
+        code = program(f"""
+writeFile("{p}", "day 1\\n")
+appendFile("{p}", "day 2\\n")
+carve readLines("{p}")
+carve fileExists("{p}")
+carve deleteFile("{p}")
+carve fileExists("{p}")
+""")
+        self.assertEqual(run(code), '["day 1", "day 2"]\npowder\npowder\nice\n')
+
+    def test_read_missing_file_is_catchable(self):
+        code = program(f"""
+patrol
+  carve readFile("{self.root / 'nope.txt'}")
+patroller (e)
+  carve "caught it"
+runout
+""")
+        self.assertEqual(run(code), "caught it\n")
+
+    def test_traverse_loads_tricks(self):
+        (self.root / "lib.slope").write_text(
+            "summit\n  trick triple(n)\n    stomp n * 3\n  nail\nlodge\n")
+        main = self.root / "main.slope"
+        main.write_text('summit\n  traverse "lib.slope"\n  carve triple(14)\nlodge\n')
+        out = io.StringIO()
+        with redirect_stdout(out):
+            run_source(main.read_text(), base_dir=str(self.root))
+        self.assertEqual(out.getvalue(), "42\n")
+
+    def test_traverse_runs_once(self):
+        (self.root / "noisy.slope").write_text('summit\n  carve "loaded"\nlodge\n')
+        main = 'summit\n  traverse "noisy.slope"\n  traverse "noisy"\nlodge\n'
+        out = io.StringIO()
+        with redirect_stdout(out):
+            run_source(main, base_dir=str(self.root))
+        self.assertEqual(out.getvalue(), "loaded\n")
+
+    def test_traverse_cycle_detected(self):
+        (self.root / "a.slope").write_text('summit\n  traverse "b.slope"\nlodge\n')
+        (self.root / "b.slope").write_text('summit\n  traverse "a.slope"\nlodge\n')
+        with self.assertRaises(SlopeRuntimeError) as ctx:
+            run_source('summit\n  traverse "a.slope"\nlodge\n', base_dir=str(self.root))
+        self.assertIn("Traverse loop", str(ctx.exception))
+
+    def test_traverse_missing_file(self):
+        with self.assertRaises(SlopeRuntimeError) as ctx:
+            run_source('summit\n  traverse "ghost.slope"\nlodge\n', base_dir=str(self.root))
+        self.assertIn("Can't traverse", str(ctx.exception))
 
 
 class TestErrorReporting(unittest.TestCase):
