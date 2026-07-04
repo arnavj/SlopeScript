@@ -1,0 +1,61 @@
+# Changelog
+
+## 2.0.0 — 2026-07-04
+
+SlopeScript grows up: from a demo lexer/parser into a complete, tested,
+installable language. This is a breaking release — see the migration notes.
+
+### Added
+- **Tricks (functions)**: `trick name(params) ... nail`, with `stomp` for
+  return values, recursion (with a friendly depth limit), local scope, and
+  closures.
+- **Lockers (dictionaries)**: `{ key: value }` literals, `locker.key` and
+  `locker["key"]` access and assignment, iteration over keys.
+- **Ski patrol (error handling)**: `patrol ... patroller (e) ... runout`
+  try/catch, and `avalanche value` to throw any value. Runtime wipeouts
+  (division by zero, bad indexes, missing keys, type errors) are catchable.
+- **The Base Lodge**: ~40 built-in functions — conversion (`number`, `text`,
+  `type`), racks (`length`, `push`, `pop`, `laps`, `groom`, `flip`, `find`,
+  `slice`, `join`, `sum`, `min`, `max`), text (`upper`, `lower`, `trim`,
+  `split`, `replace`, `startsWith`, `endsWith`), lockers (`keys`, `values`,
+  `has`, `drop`), math (`abs`, `round`, `basin`, `cornice`, `sqrt`,
+  `snowflake`), plus plain-name aliases (`range`, `sort`, `floor`, ...).
+- **REPL**: run `slope` with no arguments — multi-line blocks, expression
+  echo, persistent session state, `apres` to exit.
+- **Language features**: `whiteout` (null), compound assignment
+  (`+= -= *= /=`), plain reassignment without `pack`, modulo `%`, power
+  `**`, the `in` operator, multi-value `carve "a", b`, blank-line `carve`,
+  string escapes (`\n`, `\t`, ...), single-quoted strings, negative rack
+  indexing, index/member assignment, rack concatenation with `+`,
+  text building with `+` across types.
+- **Tooling**: `pip install .` with a `slope` console command, `slope run`,
+  `--version`/`--help`, stdin execution, a 90-test suite, and GitHub
+  Actions CI across Python 3.8–3.13.
+- **Errors that teach**: every syntax and runtime error carries a line
+  number and a hint (e.g. "'speed' is not packed — pack it first, like:
+  pack speed = ...").
+
+### Changed (breaking)
+- Every block now ends with an explicit `runout` (or `nail` for tricks).
+  v1 closed loops by repeating the loop keyword and closed conditionals
+  implicitly, which made block boundaries ambiguous — code after a
+  conditional silently landed inside its last branch. All examples are
+  updated to the new syntax.
+- Comparing a number with text (`3 < "5"`) is now an error instead of
+  undefined behaviour; `==` never coerces types.
+- Reassigning an unpacked variable is an error (declare with `pack` first).
+
+### Fixed
+- The shipped examples were wrapped in markdown fences and did not parse;
+  all examples now run (and CI executes every one of them).
+- Whole-number division no longer prints a trailing `.0`.
+- Unterminated strings, unclosed comments, and unknown characters now
+  produce clear syntax errors with line numbers instead of being silently
+  skipped.
+- End of input during `chairlift` cleanly stops the program (the lifts are
+  closed) instead of looping forever on empty text.
+
+## 1.0.0
+
+Initial experiment: lexer, parser, and tree-walking interpreter with
+variables, arithmetic, conditionals, loops, racks, and `chairlift` input.

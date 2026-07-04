@@ -1,34 +1,26 @@
-## 7. speed_calculator.slope
-```
+// speed_calculator.slope — how fast were you going?
 summit
-  pack distance = 5000
-  pack time = 10
-  
+  pack distance = 5000  // feet
+  pack time = 10        // minutes
+
   carve "🎿 SKI SPEED CALCULATOR"
-  carve ""
-  
-  carve "Distance:"
-  carve distance
-  carve "feet"
-  
-  carve "Time:"
-  carve time
-  carve "minutes"
-  
+  carve
+  carve "Distance:", distance, "feet"
+  carve "Time:", time, "minutes"
+
   pack feetPerMinute = distance / time
-  
-  carve ""
-  carve "Your average speed:"
-  carve feetPerMinute
-  carve "feet per minute"
-  
-  carve ""
+  pack mph = round(feetPerMinute * 60 / 5280, 1)
+
+  carve
+  carve "Your average speed:", feetPerMinute, "feet per minute"
+  carve "That's about", mph, "mph"
+
+  carve
   greenCircle (feetPerMinute < 300)
     carve "Taking it easy - nice cruising! 😊"
   blueSquare (feetPerMinute < 600)
     carve "Good pace - you're moving! 🎿"
   blackDiamond
     carve "BLAZING FAST! You're shredding! 💨"
+  runout
 lodge
-```
-

@@ -1,0 +1,32 @@
+// lodge_menu.slope — lockers (dictionaries) in action
+summit
+  pack menu = {
+    "hot chocolate": 5,
+    "chili bowl": 12,
+    "waffle": 9,
+    "coffee": 4
+  }
+
+  carve "☕ BASE LODGE MENU"
+  carve "━━━━━━━━━━━━━━━━━"
+  liftline item in menu
+    carve " ", item, "—", "$" + menu[item]
+  runout
+
+  // Build an order
+  pack order = ["hot chocolate", "waffle", "hot chocolate"]
+  pack total = 0
+  liftline item in order
+    total += menu[item]
+  runout
+
+  carve
+  carve "Your order:", join(order, ", ")
+  carve "Total: $" + total
+
+  // Lockers are easy to update
+  menu["cookie"] = 3
+  menu.coffee = 5  // dot access works too
+  carve
+  carve "Menu now has", length(menu), "items"
+lodge

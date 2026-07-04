@@ -1,7 +1,5 @@
-## 1. hello.slope
-```
+// hello.slope — your first run
 summit
   carve "🎿 Hello from the slopes!"
   carve "Welcome to SlopeScript!"
 lodge
-```
