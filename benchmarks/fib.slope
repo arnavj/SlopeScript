@@ -1,0 +1,10 @@
+// fib.slope — recursion benchmark
+summit
+  trick fib(n)
+    greenCircle (n < 2)
+      stomp n
+    runout
+    stomp fib(n - 1) + fib(n - 2)
+  nail
+  carve "fib(22) =", fib(22)
+lodge

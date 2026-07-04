@@ -19,12 +19,13 @@ standard library ("the base lodge"), REPL, and CLI. Zero dependencies.
 """
 
 import math
+import os
 import random
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # ---------------------------------------------------------------------------
 # Errors and control-flow signals
@@ -109,6 +110,7 @@ KEYWORDS = {
     'patrol': 'PATROL',    # try
     'patroller': 'PATROLLER',  # catch
     'avalanche': 'AVALANCHE',  # throw
+    'traverse': 'TRAVERSE',    # import another .slope file
 }
 
 TWO_CHAR_OPS = {
@@ -227,10 +229,14 @@ class Lexer:
         self.tokens.append(Token('NUMBER', value, self.line))
 
     def read_string(self):
+        # Text supports {expression} interpolation. A plain string becomes a
+        # STRING token; interpolated text becomes an ISTRING token whose value
+        # is a list of ('t', text) and ('e', expr_source, line) parts.
         quote = self.current()
         start_line = self.line
         self.advance()
-        parts: List[str] = []
+        parts: List[Tuple] = []
+        buf: List[str] = []
         while True:
             ch = self.current()
             if self.pos >= len(self.code) or ch == '\n':
@@ -241,12 +247,72 @@ class Lexer:
             if ch == '\\':
                 self.advance()
                 esc = self.current()
-                parts.append(ESCAPES.get(esc, esc))
+                if esc in ('{', '}'):
+                    buf.append(esc)
+                else:
+                    buf.append(ESCAPES.get(esc, esc))
                 self.advance()
-            else:
-                parts.append(ch)
+                continue
+            if ch == '{':
+                expr_line = self.line
                 self.advance()
-        self.tokens.append(Token('STRING', ''.join(parts), start_line))
+                if self.current() == '}':
+                    buf.append('{}')  # empty braces stay literal
+                    self.advance()
+                    continue
+                source = self.read_interpolation(start_line)
+                if buf:
+                    parts.append(('t', ''.join(buf)))
+                    buf = []
+                parts.append(('e', source, expr_line))
+                continue
+            buf.append(ch)
+            self.advance()
+        if not parts:
+            self.tokens.append(Token('STRING', ''.join(buf), start_line))
+        else:
+            if buf:
+                parts.append(('t', ''.join(buf)))
+            self.tokens.append(Token('ISTRING', parts, start_line))
+
+    def read_interpolation(self, start_line: int) -> str:
+        """Collect the source between { and its matching }, respecting
+        nested braces and string literals inside the interpolation."""
+        depth = 1
+        chars: List[str] = []
+        while True:
+            if self.pos >= len(self.code) or self.current() == '\n':
+                raise SlopeSyntaxError("Unclosed {...} interpolation in text — "
+                                       "escape a literal brace as \\{", start_line)
+            ch = self.current()
+            if ch in '"\'':
+                inner_quote = ch
+                chars.append(ch)
+                self.advance()
+                while True:
+                    if self.pos >= len(self.code) or self.current() == '\n':
+                        raise SlopeSyntaxError("Unterminated string inside a {...} interpolation",
+                                               start_line)
+                    c2 = self.current()
+                    chars.append(c2)
+                    self.advance()
+                    if c2 == '\\':
+                        if self.pos < len(self.code) and self.current() != '\n':
+                            chars.append(self.current())
+                            self.advance()
+                        continue
+                    if c2 == inner_quote:
+                        break
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    self.advance()
+                    return ''.join(chars)
+            chars.append(ch)
+            self.advance()
 
     def read_operator(self):
         two = self.peek(2)
@@ -292,8 +358,8 @@ class Lexer:
 #   ('un', op, expr, line)
 
 EXPR_START = {
-    'NUMBER', 'STRING', 'TRUE', 'FALSE', 'NULL', 'IDENTIFIER',
-    'LPAREN', 'LBRACKET', 'LBRACE', 'NOT', 'MINUS',
+    'NUMBER', 'STRING', 'ISTRING', 'TRUE', 'FALSE', 'NULL', 'IDENTIFIER',
+    'LPAREN', 'LBRACKET', 'LBRACE', 'NOT', 'MINUS', 'TRICK',
 }
 
 BLOCK_OPENERS = {'GREEN', 'GONDOLA', 'LIFTLINE', 'TRICK', 'PATROL'}
@@ -394,7 +460,15 @@ class Parser:
         if t == 'LIFTLINE':
             return self.parse_liftline()
         if t == 'TRICK':
-            return self.parse_trick()
+            nxt = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            if nxt is not None and nxt.type == 'IDENTIFIER':
+                return self.parse_trick()
+            # `trick (x) ... nail` with no name is an anonymous trick expression.
+            return self.parse_assign_or_expr()
+        if t == 'TRAVERSE':
+            self.advance()
+            expr = self.parse_expression()
+            return ('traverse', expr, tok.line)
         if t == 'PATROL':
             return self.parse_patrol()
         if t == 'PATROLLER':
@@ -483,6 +557,12 @@ class Parser:
         tok = self.expect('TRICK')
         name = self.expect('IDENTIFIER', "trick needs a name, like: trick greet(name)").value
         self.expect('LPAREN', f"trick {name} needs a parameter list, even if empty: trick {name}()")
+        params = self.parse_params()
+        body = self.parse_block({'RUNOUT'}, tok.line, f"trick {name}")
+        self.expect('RUNOUT', "finish the trick with nail (or runout)")
+        return ('trick', name, params, body, tok.line)
+
+    def parse_params(self) -> List[str]:
         params: List[str] = []
         while not self.check('RPAREN'):
             params.append(self.expect('IDENTIFIER', "trick parameters must be names").value)
@@ -492,9 +572,7 @@ class Parser:
                 raise SlopeSyntaxError("Expected ',' or ')' in trick parameter list",
                                        self.current().line if self.current() else self.last_line())
         self.expect('RPAREN')
-        body = self.parse_block({'RUNOUT'}, tok.line, f"trick {name}")
-        self.expect('RUNOUT', "finish the trick with nail (or runout)")
-        return ('trick', name, params, body, tok.line)
+        return params
 
     def parse_patrol(self) -> Tuple:
         tok = self.expect('PATROL')
@@ -597,7 +675,10 @@ class Parser:
                 line = self.advance().line
                 name = self.expect('IDENTIFIER', "expected a locker key after '.'").value
                 expr = ('member', expr, name, line)
-            elif self.check('LPAREN') and expr[0] == 'var':
+            elif self.check('LPAREN') and self.tokens[self.pos - 1].line == self.current().line:
+                # Tricks are first-class: any expression can be called. The
+                # same-line rule stops a parenthesised statement on the next
+                # line from being read as arguments.
                 line = self.advance().line
                 args: List[Tuple] = []
                 while not self.check('RPAREN'):
@@ -608,7 +689,10 @@ class Parser:
                         raise SlopeSyntaxError("Expected ',' or ')' in trick call",
                                                self.current().line if self.current() else self.last_line())
                 self.expect('RPAREN')
-                expr = ('call', expr[1], args, line)
+                if expr[0] == 'var':
+                    expr = ('call', expr[1], args, line)
+                else:
+                    expr = ('callexpr', expr, args, line)
             else:
                 return expr
 
@@ -619,9 +703,31 @@ class Parser:
         if tok.type == 'NUMBER' or tok.type == 'STRING':
             self.advance()
             return ('lit', tok.value)
+        if tok.type == 'ISTRING':
+            self.advance()
+            parts: List[Tuple] = []
+            for part in tok.value:
+                if part[0] == 't':
+                    parts.append(('t', part[1]))
+                else:
+                    source, expr_line = part[1], part[2]
+                    try:
+                        sub = Parser(Lexer(source).tokenize()).parse_expression_only()
+                    except SlopeSyntaxError as e:
+                        raise SlopeSyntaxError(f"Inside the {{{source}}} interpolation: {e.message}",
+                                               expr_line)
+                    parts.append(('e', sub))
+            return ('interp', parts, tok.line)
         if tok.type in ('TRUE', 'FALSE', 'NULL'):
             self.advance()
             return ('lit', tok.value)
+        if tok.type == 'TRICK':
+            self.advance()
+            self.expect('LPAREN', "an anonymous trick needs parameters, like: trick(x)")
+            params = self.parse_params()
+            body = self.parse_block({'RUNOUT'}, tok.line, "anonymous trick")
+            self.expect('RUNOUT', "finish the trick with nail (or runout)")
+            return ('trickexpr', params, body, tok.line)
         if tok.type == 'IDENTIFIER':
             self.advance()
             return ('var', tok.value, tok.line)
@@ -722,6 +828,8 @@ def format_value(value: Any) -> str:
         return '{' + ', '.join(f"{format_inner(k)}: {format_inner(v)}" for k, v in value.items()) + '}'
     if isinstance(value, Trick):
         return f"<trick {value.name}>"
+    if isinstance(value, BuiltinRef):
+        return f"<trick {value.name} (base lodge)>"
     return str(value)
 
 
@@ -732,13 +840,14 @@ def format_inner(value: Any) -> str:
 
 
 def is_truthy(value: Any) -> bool:
-    if value is None or value is False:
-        return False
     if value is True:
         return True
-    if isinstance(value, (int, float)):
+    if value is False or value is None:
+        return False
+    t = type(value)
+    if t is int or t is float:
         return value != 0
-    if isinstance(value, (str, list, dict)):
+    if t is str or t is list or t is dict:
         return len(value) > 0
     return True
 
@@ -756,13 +865,13 @@ def type_name(value: Any) -> str:
         return 'rack'
     if isinstance(value, dict):
         return 'locker'
-    if isinstance(value, Trick):
+    if isinstance(value, (Trick, BuiltinRef)):
         return 'trick'
     return type(value).__name__
 
 
 class Trick:
-    """A user-defined function."""
+    """A user-defined function. First-class: store it, pass it, stomp it."""
 
     __slots__ = ('name', 'params', 'body', 'closure')
 
@@ -771,6 +880,18 @@ class Trick:
         self.params = params
         self.body = body
         self.closure = closure
+
+
+class BuiltinRef:
+    """A Base Lodge function as a first-class value (e.g. `pack f = groom`)."""
+
+    __slots__ = ('name', 'fn', 'min_args', 'max_args')
+
+    def __init__(self, name: str, fn, min_args: int, max_args: Optional[int]):
+        self.name = name
+        self.fn = fn
+        self.min_args = min_args
+        self.max_args = max_args
 
 
 class Environment:
@@ -840,7 +961,7 @@ def build_builtins() -> Dict[str, Any]:
 
     def builtin(name, min_args, max_args, aliases=()):
         def register(fn):
-            entry = (fn, min_args, max_args, name)
+            entry = BuiltinRef(name, fn, min_args, max_args)
             B[name] = entry
             for alias in aliases:
                 B[alias] = entry
@@ -849,7 +970,7 @@ def build_builtins() -> Dict[str, Any]:
 
     # ---- input / output ----
     @builtin('chairlift', 0, 1)
-    def _chairlift(args, line):
+    def _chairlift(args, line, interp):
         prompt = ''
         if args:
             prompt = format_value(args[0]) + ' '
@@ -860,7 +981,7 @@ def build_builtins() -> Dict[str, Any]:
 
     # ---- conversions ----
     @builtin('number', 1, 1, aliases=('tune',))
-    def _number(args, line):
+    def _number(args, line, interp):
         v = args[0]
         if isinstance(v, bool):
             return 1 if v else 0
@@ -875,43 +996,43 @@ def build_builtins() -> Dict[str, Any]:
         raise SlopeRuntimeError(f"Could not tune {type_name(v)} into a number", line)
 
     @builtin('text', 1, 1)
-    def _text(args, line):
+    def _text(args, line, interp):
         return format_value(args[0])
 
     @builtin('type', 1, 1, aliases=('trailMap',))
-    def _type(args, line):
+    def _type(args, line, interp):
         return type_name(args[0])
 
     # ---- racks & text ----
     @builtin('length', 1, 1)
-    def _length(args, line):
+    def _length(args, line, interp):
         v = args[0]
         if isinstance(v, (str, list, dict)):
             return len(v)
         raise SlopeRuntimeError(f"length() needs text, a rack, or a locker, not {type_name(v)}", line)
 
     @builtin('push', 2, 2, aliases=('stash',))
-    def _push(args, line):
+    def _push(args, line, interp):
         rack = _require_rack(args[0], 'push', line)
         rack.append(args[1])
         return rack
 
     @builtin('pop', 1, 1)
-    def _pop(args, line):
+    def _pop(args, line, interp):
         rack = _require_rack(args[0], 'pop', line)
         if not rack:
             raise SlopeRuntimeError("pop() on an empty rack — there is nothing left to grab", line)
         return rack.pop()
 
     @builtin('laps', 1, 3, aliases=('range',))
-    def _laps(args, line):
+    def _laps(args, line, interp):
         nums = [_require_number(a, 'laps', line) for a in args]
         if any(isinstance(n, float) for n in nums):
             raise SlopeRuntimeError("laps() needs whole numbers", line)
         return list(range(*nums))
 
     @builtin('groom', 1, 1, aliases=('sort',))
-    def _groom(args, line):
+    def _groom(args, line, interp):
         rack = _require_rack(args[0], 'groom', line)
         try:
             return sorted(rack)
@@ -919,7 +1040,7 @@ def build_builtins() -> Dict[str, Any]:
             raise SlopeRuntimeError("groom() can only sort a rack of all numbers or all text", line)
 
     @builtin('flip', 1, 1, aliases=('reverse',))
-    def _flip(args, line):
+    def _flip(args, line, interp):
         v = args[0]
         if isinstance(v, list):
             return list(reversed(v))
@@ -928,14 +1049,14 @@ def build_builtins() -> Dict[str, Any]:
         raise SlopeRuntimeError(f"flip() needs a rack or text, not {type_name(v)}", line)
 
     @builtin('contains', 2, 2)
-    def _contains(args, line):
+    def _contains(args, line, interp):
         container, item = args
         if isinstance(container, (list, str, dict)):
             return item in container
         raise SlopeRuntimeError(f"contains() needs a rack, text, or locker, not {type_name(container)}", line)
 
     @builtin('find', 2, 2)
-    def _find(args, line):
+    def _find(args, line, interp):
         container, item = args
         if isinstance(container, list):
             return container.index(item) if item in container else -1
@@ -944,7 +1065,7 @@ def build_builtins() -> Dict[str, Any]:
         raise SlopeRuntimeError(f"find() needs a rack or text, not {type_name(container)}", line)
 
     @builtin('slice', 2, 3)
-    def _slice(args, line):
+    def _slice(args, line, interp):
         v = args[0]
         if not isinstance(v, (list, str)):
             raise SlopeRuntimeError(f"slice() needs a rack or text, not {type_name(v)}", line)
@@ -953,13 +1074,13 @@ def build_builtins() -> Dict[str, Any]:
         return v[start:end]
 
     @builtin('join', 2, 2)
-    def _join(args, line):
+    def _join(args, line, interp):
         rack = _require_rack(args[0], 'join', line)
         sep = _require_text(args[1], 'join', line)
         return sep.join(format_value(v) for v in rack)
 
     @builtin('split', 2, 2)
-    def _split(args, line):
+    def _split(args, line, interp):
         text = _require_text(args[0], 'split', line)
         sep = _require_text(args[1], 'split', line)
         if sep == '':
@@ -967,95 +1088,95 @@ def build_builtins() -> Dict[str, Any]:
         return text.split(sep)
 
     @builtin('upper', 1, 1, aliases=('shout',))
-    def _upper(args, line):
+    def _upper(args, line, interp):
         return _require_text(args[0], 'upper', line).upper()
 
     @builtin('lower', 1, 1, aliases=('whisper',))
-    def _lower(args, line):
+    def _lower(args, line, interp):
         return _require_text(args[0], 'lower', line).lower()
 
     @builtin('trim', 1, 1)
-    def _trim(args, line):
+    def _trim(args, line, interp):
         return _require_text(args[0], 'trim', line).strip()
 
     @builtin('replace', 3, 3)
-    def _replace(args, line):
+    def _replace(args, line, interp):
         return _require_text(args[0], 'replace', line).replace(
             _require_text(args[1], 'replace', line),
             _require_text(args[2], 'replace', line))
 
     @builtin('startsWith', 2, 2)
-    def _starts(args, line):
+    def _starts(args, line, interp):
         return _require_text(args[0], 'startsWith', line).startswith(
             _require_text(args[1], 'startsWith', line))
 
     @builtin('endsWith', 2, 2)
-    def _ends(args, line):
+    def _ends(args, line, interp):
         return _require_text(args[0], 'endsWith', line).endswith(
             _require_text(args[1], 'endsWith', line))
 
     # ---- lockers ----
     @builtin('keys', 1, 1)
-    def _keys(args, line):
+    def _keys(args, line, interp):
         return list(_require_locker(args[0], 'keys', line).keys())
 
     @builtin('values', 1, 1)
-    def _values(args, line):
+    def _values(args, line, interp):
         return list(_require_locker(args[0], 'values', line).values())
 
     @builtin('has', 2, 2)
-    def _has(args, line):
+    def _has(args, line, interp):
         return args[1] in _require_locker(args[0], 'has', line)
 
     @builtin('drop', 2, 2)
-    def _drop(args, line):
+    def _drop(args, line, interp):
         locker = _require_locker(args[0], 'drop', line)
         locker.pop(args[1], None)
         return locker
 
     # ---- math ----
     @builtin('abs', 1, 1)
-    def _abs(args, line):
+    def _abs(args, line, interp):
         return abs(_require_number(args[0], 'abs', line))
 
     @builtin('round', 1, 2)
-    def _round(args, line):
+    def _round(args, line, interp):
         n = _require_number(args[0], 'round', line)
         digits = int(_require_number(args[1], 'round', line)) if len(args) > 1 else 0
         result = round(n, digits)
         return _normalize_number(result) if digits <= 0 else result
 
     @builtin('basin', 1, 1, aliases=('floor',))
-    def _floor(args, line):
+    def _floor(args, line, interp):
         return math.floor(_require_number(args[0], 'basin', line))
 
     @builtin('cornice', 1, 1, aliases=('ceil',))
-    def _ceil(args, line):
+    def _ceil(args, line, interp):
         return math.ceil(_require_number(args[0], 'cornice', line))
 
     @builtin('sqrt', 1, 1)
-    def _sqrt(args, line):
+    def _sqrt(args, line, interp):
         n = _require_number(args[0], 'sqrt', line)
         if n < 0:
             raise SlopeRuntimeError("sqrt() of a negative number — that slope does not exist", line)
         return _normalize_number(math.sqrt(n))
 
     @builtin('min', 1, None)
-    def _min(args, line):
+    def _min(args, line, interp):
         values = args[0] if len(args) == 1 and isinstance(args[0], list) else args
         if not values:
             raise SlopeRuntimeError("min() of an empty rack", line)
         return min(values)
 
     @builtin('max', 1, None)
-    def _max(args, line):
+    def _max(args, line, interp):
         values = args[0] if len(args) == 1 and isinstance(args[0], list) else args
         if not values:
             raise SlopeRuntimeError("max() of an empty rack", line)
         return max(values)
 
     @builtin('sum', 1, 1)
-    def _sum(args, line):
+    def _sum(args, line, interp):
         rack = _require_rack(args[0], 'sum', line)
         total = 0
         for v in rack:
@@ -1063,7 +1184,7 @@ def build_builtins() -> Dict[str, Any]:
         return total
 
     @builtin('snowflake', 0, 2, aliases=('random',))
-    def _snowflake(args, line):
+    def _snowflake(args, line, interp):
         if len(args) == 0:
             return random.random()
         if len(args) == 2:
@@ -1076,9 +1197,105 @@ def build_builtins() -> Dict[str, Any]:
             return random.uniform(lo, hi)
         raise SlopeRuntimeError("snowflake() takes zero arguments or two (low, high)", line)
 
+    # ---- higher-order tricks ----
+    @builtin('map', 2, 2)
+    def _map(args, line, interp):
+        rack = _require_rack(args[0], 'map', line)
+        fn = args[1]
+        return [interp.call_value(fn, [item], line) for item in rack]
+
+    @builtin('filter', 2, 2)
+    def _filter(args, line, interp):
+        rack = _require_rack(args[0], 'filter', line)
+        fn = args[1]
+        return [item for item in rack if is_truthy(interp.call_value(fn, [item], line))]
+
+    @builtin('reduce', 2, 3)
+    def _reduce(args, line, interp):
+        rack = _require_rack(args[0], 'reduce', line)
+        fn = args[1]
+        if len(args) > 2:
+            acc = args[2]
+            items = rack
+        else:
+            if not rack:
+                raise SlopeRuntimeError("reduce() on an empty rack needs a starting value: "
+                                        "reduce(rack, fn, start)", line)
+            acc = rack[0]
+            items = rack[1:]
+        for item in items:
+            acc = interp.call_value(fn, [acc, item], line)
+        return acc
+
+    @builtin('each', 2, 2)
+    def _each(args, line, interp):
+        rack = _require_rack(args[0], 'each', line)
+        fn = args[1]
+        for item in rack:
+            interp.call_value(fn, [item], line)
+        return None
+
+    # ---- files (the trail journal) ----
+    def _open_error(action, path, err, line):
+        reason = err.strerror or type(err).__name__
+        return SlopeRuntimeError(f"Couldn't {action} '{path}': {reason}", line)
+
+    @builtin('readFile', 1, 1)
+    def _read_file(args, line, interp):
+        path = _require_text(args[0], 'readFile', line)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except OSError as e:
+            raise _open_error('read', path, e, line)
+
+    @builtin('readLines', 1, 1)
+    def _read_lines(args, line, interp):
+        path = _require_text(args[0], 'readLines', line)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return [ln.rstrip('\n') for ln in f]
+        except OSError as e:
+            raise _open_error('read', path, e, line)
+
+    @builtin('writeFile', 2, 2)
+    def _write_file(args, line, interp):
+        path = _require_text(args[0], 'writeFile', line)
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(format_value(args[1]))
+        except OSError as e:
+            raise _open_error('write', path, e, line)
+        return None
+
+    @builtin('appendFile', 2, 2)
+    def _append_file(args, line, interp):
+        path = _require_text(args[0], 'appendFile', line)
+        try:
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write(format_value(args[1]))
+        except OSError as e:
+            raise _open_error('append to', path, e, line)
+        return None
+
+    @builtin('fileExists', 1, 1)
+    def _file_exists(args, line, interp):
+        return os.path.isfile(_require_text(args[0], 'fileExists', line))
+
+    @builtin('deleteFile', 1, 1)
+    def _delete_file(args, line, interp):
+        path = _require_text(args[0], 'deleteFile', line)
+        try:
+            os.remove(path)
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as e:
+            raise _open_error('delete', path, e, line)
+
     # ---- misc ----
     @builtin('clock', 0, 0)
-    def _clock(args, line):
+    def _clock(args, line, interp):
         return time.time()
 
     return B
@@ -1101,6 +1318,9 @@ class Interpreter:
     def __init__(self):
         self.globals = Environment()
         self.trick_depth = 0
+        self.loaded_trails: set = set()   # absolute paths already traversed
+        self.loading_trails: set = set()  # traversal in progress (cycle guard)
+        self.dir_stack: List[str] = []    # directory context for relative traverses
 
     # -- statements ---------------------------------------------------------
 
@@ -1189,11 +1409,50 @@ class Interpreter:
             _, expr, line = stmt
             raise AvalancheError(self.evaluate(expr, env), line)
 
+        elif kind == 'traverse':
+            _, expr, line = stmt
+            path = self.evaluate(expr, env)
+            if not isinstance(path, str):
+                raise SlopeRuntimeError(f"traverse needs a file path as text, not {type_name(path)}", line)
+            self.traverse(path, line)
+
         elif kind == 'expr':
             self.evaluate(stmt[1], env)
 
         else:  # pragma: no cover
             raise SlopeRuntimeError(f"Unknown statement: {kind}", stmt[-1])
+
+    def traverse(self, path: str, line: int):
+        """Load another .slope file into this program (import). The file runs
+        once in the global scope; repeat traverses are no-ops."""
+        base = self.dir_stack[-1] if self.dir_stack else os.getcwd()
+        full = os.path.abspath(os.path.join(base, path))
+        if not os.path.isfile(full) and os.path.isfile(full + '.slope'):
+            full = full + '.slope'
+        if full in self.loaded_trails:
+            return
+        if full in self.loading_trails:
+            raise SlopeRuntimeError(f"Traverse loop! '{path}' is already being traversed — "
+                                    "two trails can't each lead to the other", line)
+        try:
+            with open(full, 'r', encoding='utf-8') as f:
+                source = f.read()
+        except OSError as e:
+            raise SlopeRuntimeError(f"Can't traverse to '{path}': {e.strerror or 'trail not found'}", line)
+        self.loading_trails.add(full)
+        self.dir_stack.append(os.path.dirname(full))
+        try:
+            ast = compile_source(source, snippet=True)
+            self.run(ast, self.globals)
+        except SlopeError as e:
+            if '(while traversing' not in e.message:
+                e.message = f"{e.message} (while traversing {path})"
+                e.args = (e.message,)
+            raise
+        finally:
+            self.dir_stack.pop()
+            self.loading_trails.discard(full)
+        self.loaded_trails.add(full)
 
     def iterate(self, iterable: Any, line: int) -> List[Any]:
         if isinstance(iterable, list):
@@ -1252,7 +1511,44 @@ class Interpreter:
             return expr[1]
 
         if kind == 'var':
-            return env.get(expr[1], expr[2])
+            name = expr[1]
+            scope: Optional[Environment] = env
+            while scope is not None:
+                if name in scope.vars:
+                    return scope.vars[name]
+                scope = scope.parent
+            ref = BUILTINS.get(name)
+            if ref is not None:
+                return ref
+            raise SlopeRuntimeError(f"'{name}' is not packed — pack it first, like: pack {name} = ...",
+                                    expr[2])
+
+        if kind == 'bin':
+            op = expr[1]
+            if op == '&&':
+                left = self.evaluate(expr[2], env)
+                return self.evaluate(expr[3], env) if is_truthy(left) else left
+            if op == '||':
+                left = self.evaluate(expr[2], env)
+                return left if is_truthy(left) else self.evaluate(expr[3], env)
+            return self.binary_op(op, self.evaluate(expr[2], env),
+                                  self.evaluate(expr[3], env), expr[4])
+
+        if kind == 'call':
+            return self.call(expr[1], expr[2], env, expr[3])
+
+        if kind == 'interp':
+            pieces: List[str] = []
+            for part in expr[1]:
+                if part[0] == 't':
+                    pieces.append(part[1])
+                else:
+                    pieces.append(format_value(self.evaluate(part[1], env)))
+            return ''.join(pieces)
+
+        if kind == 'trickexpr':
+            _, params, body, line = expr
+            return Trick('(anonymous)', params, body, env)
 
         if kind == 'rack':
             return [self.evaluate(e, env) for e in expr[1]]
@@ -1276,19 +1572,11 @@ class Interpreter:
                                         f"it holds {format_value(list(container.keys()))}", line)
             raise SlopeRuntimeError(f"Can't look up .{name} on {type_name(container)}", line)
 
-        if kind == 'call':
-            return self.call(expr[1], expr[2], env, expr[3])
-
-        if kind == 'bin':
-            _, op, left_expr, right_expr, line = expr
-            if op == '&&':
-                left = self.evaluate(left_expr, env)
-                return self.evaluate(right_expr, env) if is_truthy(left) else left
-            if op == '||':
-                left = self.evaluate(left_expr, env)
-                return left if is_truthy(left) else self.evaluate(right_expr, env)
-            return self.binary_op(op, self.evaluate(left_expr, env),
-                                  self.evaluate(right_expr, env), line)
+        if kind == 'callexpr':
+            _, base, arg_exprs, line = expr
+            callee = self.evaluate(base, env)
+            args = [self.evaluate(a, env) for a in arg_exprs]
+            return self.call_value(callee, args, line)
 
         if kind == 'un':
             _, op, operand_expr, line = expr
@@ -1320,24 +1608,33 @@ class Interpreter:
         raise SlopeRuntimeError(f"Can't index into {type_name(container)}", line)
 
     def call(self, name: str, arg_exprs: List[Tuple], env: Environment, line: int) -> Any:
-        args = [self.evaluate(a, env) for a in arg_exprs]
+        evaluate = self.evaluate
+        args = [evaluate(a, env) for a in arg_exprs]
 
         # User-defined tricks shadow builtins.
-        target: Any = None
         lookup: Optional[Environment] = env
         while lookup is not None:
             if name in lookup.vars:
                 target = lookup.vars[name]
-                break
+                if type(target) is Trick:
+                    return self.call_trick(target, args, line)
+                if type(target) is BuiltinRef:
+                    return self.call_value(target, args, line)
+                raise SlopeRuntimeError(f"'{name}' is {type_name(target)}, not a trick — "
+                                        "it can't be called", line)
             lookup = lookup.parent
 
-        if isinstance(target, Trick):
-            return self.call_trick(target, args, line)
-        if target is not None:
-            raise SlopeRuntimeError(f"'{name}' is {type_name(target)}, not a trick — it can't be called", line)
+        target = BUILTINS.get(name)
+        if target is None:
+            raise SlopeRuntimeError(f"Unknown trick '{name}' — define it with: "
+                                    f"trick {name}(...) ... nail", line)
+        return self.call_value(target, args, line)
 
-        if name in BUILTINS:
-            fn, min_args, max_args, canonical = BUILTINS[name]
+    def call_value(self, callee: Any, args: List[Any], line: int) -> Any:
+        if isinstance(callee, Trick):
+            return self.call_trick(callee, args, line)
+        if isinstance(callee, BuiltinRef):
+            min_args, max_args = callee.min_args, callee.max_args
             if len(args) < min_args or (max_args is not None and len(args) > max_args):
                 if max_args == min_args:
                     expected = str(min_args)
@@ -1345,10 +1642,9 @@ class Interpreter:
                     expected = f"at least {min_args}"
                 else:
                     expected = f"{min_args} to {max_args}"
-                raise SlopeRuntimeError(f"{canonical}() takes {expected} argument(s), got {len(args)}", line)
-            return fn(args, line)
-
-        raise SlopeRuntimeError(f"Unknown trick '{name}' — define it with: trick {name}(...) ... nail", line)
+                raise SlopeRuntimeError(f"{callee.name}() takes {expected} argument(s), got {len(args)}", line)
+            return callee.fn(args, line, self)
+        raise SlopeRuntimeError(f"Can't call {type_name(callee)} — only tricks can be called", line)
 
     def call_trick(self, trick: Trick, args: List[Any], line: int) -> Any:
         if len(args) != len(trick.params):
@@ -1371,6 +1667,39 @@ class Interpreter:
         return None
 
     def binary_op(self, op: str, left: Any, right: Any, line: int) -> Any:
+        # Fast path: pure number math. type() checks exclude bool (which is a
+        # subclass of int) so powder/ice never sneak into arithmetic.
+        lt = type(left)
+        if (lt is int or lt is float):
+            rt = type(right)
+            if (rt is int or rt is float):
+                if op == '+':
+                    return left + right
+                if op == '-':
+                    return left - right
+                if op == '<':
+                    return left < right
+                if op == '>':
+                    return left > right
+                if op == '<=':
+                    return left <= right
+                if op == '>=':
+                    return left >= right
+                if op == '==':
+                    return left == right
+                if op == '!=':
+                    return left != right
+                if op == '*':
+                    return left * right
+                if op == '/':
+                    if right == 0:
+                        raise SlopeRuntimeError("Yard sale! Division by zero", line)
+                    result = left / right
+                    return _normalize_number(result) if lt is int and rt is int else result
+                if op == '%':
+                    if right == 0:
+                        raise SlopeRuntimeError("Yard sale! Modulo by zero", line)
+                    return left % right
         if op == '+':
             if isinstance(left, str) or isinstance(right, str):
                 return (left if isinstance(left, str) else format_value(left)) + \
@@ -1460,9 +1789,12 @@ def compile_source(code: str, snippet: bool = False) -> List[Tuple]:
     return parser.parse_snippet() if snippet else parser.parse_program()
 
 
-def run_source(code: str, interpreter: Optional[Interpreter] = None, snippet: bool = False):
+def run_source(code: str, interpreter: Optional[Interpreter] = None, snippet: bool = False,
+               base_dir: Optional[str] = None):
     """Parse and execute SlopeScript source. Raises SlopeError on failure."""
     interp = interpreter or Interpreter()
+    if base_dir and not interp.dir_stack:
+        interp.dir_stack.append(base_dir)
     ast = compile_source(code, snippet=snippet)
     try:
         interp.run(ast)
@@ -1638,8 +1970,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def run_file_source(source: str, filename: str) -> int:
+    base_dir = None
+    if filename not in ('<stdin>',):
+        base_dir = os.path.dirname(os.path.abspath(filename))
     try:
-        run_source(source)
+        run_source(source, base_dir=base_dir)
         return 0
     except SlopeError as e:
         print(report_error(e, filename), file=sys.stderr)

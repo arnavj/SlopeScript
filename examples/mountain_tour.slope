@@ -1,0 +1,16 @@
+// mountain_tour.slope — split programs into modules with traverse
+summit
+  traverse "lib/slopemath.slope"
+
+  carve "Using slopemath v{SLOPEMATH_VERSION}"
+  carve
+
+  liftline run in [
+    { name: "Bunny Hill",  rise: 300,  distance: 2000 },
+    { name: "Cruiser",     rise: 900,  distance: 2800 },
+    { name: "The Plunge",  rise: 1800, distance: 3200 }
+  ]
+    pack pct = gradient(run.rise, run.distance)
+    carve "{run.name}: {pct}% grade — {steepness(pct)} ({feetToMeters(run.rise)} m of vertical)"
+  runout
+lodge

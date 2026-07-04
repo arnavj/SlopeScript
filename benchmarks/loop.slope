@@ -1,0 +1,10 @@
+// loop.slope — tight loop benchmark
+summit
+  pack total = 0
+  pack i = 0
+  gondola (i < 300000)
+    total += i % 7
+    i += 1
+  runout
+  carve "total =", total
+lodge

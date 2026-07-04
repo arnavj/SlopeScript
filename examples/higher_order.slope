@@ -1,0 +1,38 @@
+// higher_order.slope — tricks are first-class values
+// Shows: anonymous tricks, map/filter/reduce, tricks in lockers, closures
+summit
+  pack runs = [2500, 3100, 1800, 2900, 2200]
+
+  // Pass tricks to tricks
+  pack bigRuns = filter(runs, trick(feet) stomp feet > 2400 runout)
+  pack inMeters = map(bigRuns, trick(feet) stomp round(feet / 3.28) runout)
+  pack total = reduce(runs, trick(a, b) stomp a + b runout)
+
+  carve "big runs: {bigRuns} feet"
+  carve "in meters: {inMeters}"
+  carve "day total: {total} feet"
+  carve
+
+  // Store tricks anywhere — lockers, racks, variables
+  pack convert = {
+    toMeters: trick(feet) stomp round(feet / 3.28) runout,
+    toMiles:  trick(feet) stomp round(feet / 5280, 2) runout
+  }
+  carve "{total} feet is {convert.toMeters(total)} m or {convert.toMiles(total)} miles"
+
+  // Builtins are values too
+  pack tidy = groom
+  carve "groomed: {tidy([3, 1, 2])}"
+
+  // Closures: a trick can remember where it was made
+  trick makeCounter()
+    pack count = 0
+    stomp trick()
+      count += 1
+      stomp count
+    runout
+  nail
+
+  pack lap = makeCounter()
+  carve "laps: {lap()}, {lap()}, {lap()}"
+lodge
