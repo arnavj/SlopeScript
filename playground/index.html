@@ -189,6 +189,18 @@ lodge`,
     runout
   runout
 lodge`,
+  "Radio the base (HTTP)": `summit
+  carve "📻 Radioing the base..."
+
+  // Always patrol around the radio — mountains have dead zones.
+  patrol
+    pack repo = radioJson("https://api.github.com/repos/python/cpython")
+    carve "{repo.full_name} has {repo.stargazers_count} stars"
+    carve "Latest zen: \\"{radioBase("https://api.github.com/zen")}\\""
+  patroller (e)
+    carve "No signal up here: {e}"
+  runout
+lodge`,
   "Guess the number (input)": `summit
   pack secret = snowflake(1, 20)
   pack guess = 0
