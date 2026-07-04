@@ -46,7 +46,8 @@ and liftlines (for loops), land tricks (functions), and when things go wrong,
 ski patrol (error handling) has your back.
 
 SlopeScript is a real, working language: first-class functions with recursion,
-arrays and dictionaries, a 40-function standard library, precise error messages
+arrays and dictionaries, a 50-function standard library (including HTTP and
+file I/O), precise error messages
 with line numbers, an interactive REPL, and a zero-dependency single-file
 interpreter.
 
@@ -236,7 +237,7 @@ Uncaught problems produce friendly reports with the file and line:
 
 ## 🛖 The Base Lodge (standard library)
 
-Around 40 built-in functions, no imports needed. Highlights:
+Around 50 built-in functions, no imports needed. Highlights:
 
 | Category | Functions |
 |---|---|
@@ -337,7 +338,7 @@ the gap:
 ## 🧪 Development
 
 ```bash
-python3 -m unittest discover tests    # run the test suite (113 tests)
+python3 -m unittest discover tests    # run the test suite (126 tests)
 ```
 
 The whole language lives in [`slopescript.py`](slopescript.py) — lexer, parser,
