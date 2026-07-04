@@ -412,6 +412,22 @@ plain aliases in parentheses work identically.
 Paths resolve against the working directory. Every file failure (missing
 file, permissions, ...) is a runtime error a `patroller` can catch.
 
+### The radio (HTTP + JSON)
+| Function | Returns |
+|---|---|
+| `radioBase(url, headers?)` *(fetch)* | GET; response body as text |
+| `radioJson(url, headers?)` *(fetchJson)* | GET; body parsed from JSON into racks/lockers |
+| `radioPost(url, value, headers?)` *(post)* | POST; lockers/racks are sent as JSON, text as-is; returns body |
+| `parseJson(text)` | JSON text → SlopeScript values |
+| `toJson(value, pretty?)` | SlopeScript value → JSON text |
+
+Headers are an optional locker (`{ "Authorization": "Bearer ..." }`).
+Requests time out after 30 seconds. HTTP error statuses, unreachable
+hosts, and bad JSON are runtime errors a `patroller` can catch — always
+patrol around the radio. In the browser playground, GET works through the
+browser (subject to the target site's CORS policy) and `radioPost` is
+unavailable.
+
 ### Misc
 | Function | Returns |
 |---|---|

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.2.0 — 2026-07-04
+
+The radio release: SlopeScript programs can talk to the internet.
+
+### Added
+- **HTTP builtins**: `radioBase(url, headers?)` (alias `fetch`) for GET,
+  `radioJson(url, headers?)` (alias `fetchJson`) for GET-and-parse,
+  `radioPost(url, value, headers?)` (alias `post`) — lockers/racks are
+  sent as JSON. 30-second timeout; HTTP errors, unreachable hosts, and
+  non-JSON replies are all catchable by ski patrol.
+- **JSON builtins**: `parseJson(text)` and `toJson(value, pretty?)` —
+  JSON maps 1:1 onto racks/lockers/numbers/text/powder/ice/whiteout.
+- Browser playground support: `radioBase`/`radioJson` work in the web
+  playground through the browser's network stack (subject to CORS);
+  `radioPost` reports that it needs the CLI.
+- New example `radio_check.slope` (live API call wrapped in patrol);
+  radio tests run against a local HTTP server, so the suite (126 tests)
+  stays offline-friendly.
+
 ## 2.1.0 — 2026-07-04
 
 The "practical release": SlopeScript programs can now span files, talk to

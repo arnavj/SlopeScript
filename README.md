@@ -12,7 +12,7 @@
 <p align="center">
   <img alt="Python 3.8+" src="https://img.shields.io/badge/python-3.8%2B-blue">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.1.0-orange">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.2.0-orange">
   <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-brightgreen">
 </p>
 
@@ -182,6 +182,23 @@ runout
 `readFile`, `readLines`, `writeFile`, `appendFile`, `fileExists`,
 `deleteFile` — and every failure is catchable by ski patrol.
 
+### The radio — call real APIs over HTTP
+
+```slopescript
+patrol                                    // mountains have dead zones
+  pack repo = radioJson("https://api.github.com/repos/python/cpython")
+  carve "{repo.full_name} has {repo.stargazers_count} stars"
+  radioPost("https://example.com/report", { trail: "KT-22", open: powder })
+patroller (e)
+  carve "No signal:", e
+runout
+```
+
+`radioBase(url)` GETs text, `radioJson(url)` GETs and parses JSON,
+`radioPost(url, value)` POSTs (lockers/racks go as JSON), plus
+`parseJson` / `toJson`. Aliases: `fetch`, `fetchJson`, `post`. GET works in
+the browser playground too (subject to CORS).
+
 ### Racks & lockers — arrays and dictionaries
 
 ```slopescript
@@ -230,6 +247,7 @@ Around 40 built-in functions, no imports needed. Highlights:
 | Text | `upper`, `lower`, `trim`, `split`, `replace`, `startsWith`, `endsWith` |
 | Lockers | `keys`, `values`, `has`, `drop` |
 | Files | `readFile`, `readLines`, `writeFile`, `appendFile`, `fileExists`, `deleteFile` |
+| Radio (HTTP) | `radioBase` (fetch), `radioJson`, `radioPost`, `parseJson`, `toJson` |
 | Math | `abs`, `round`, `basin` (floor), `cornice` (ceil), `sqrt`, `snowflake` (random) |
 | Misc | `clock()` |
 
@@ -270,6 +288,7 @@ Every program in [`examples/`](examples/) runs out of the box:
 | [`higher_order.slope`](examples/higher_order.slope) | map/filter/reduce, closures, anonymous tricks |
 | [`mountain_tour.slope`](examples/mountain_tour.slope) | Modules with `traverse` |
 | [`trail_journal.slope`](examples/trail_journal.slope) | File I/O |
+| [`radio_check.slope`](examples/radio_check.slope) | HTTP + JSON against a real API |
 | [`lodge_menu.slope`](examples/lodge_menu.slope) | Lockers (dictionaries) |
 | [`ski_patrol.slope`](examples/ski_patrol.slope) | Error handling |
 | [`vertical_tracker.slope`](examples/vertical_tracker.slope) | Racks of lockers |

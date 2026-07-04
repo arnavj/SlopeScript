@@ -18,14 +18,17 @@ This file is the entire implementation: lexer, parser, interpreter,
 standard library ("the base lodge"), REPL, and CLI. Zero dependencies.
 """
 
+import json
 import math
 import os
 import random
 import sys
 import time
+import urllib.error
+import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 # ---------------------------------------------------------------------------
 # Errors and control-flow signals
@@ -1292,6 +1295,101 @@ def build_builtins() -> Dict[str, Any]:
             return False
         except OSError as e:
             raise _open_error('delete', path, e, line)
+
+    # ---- the radio (HTTP) ----
+    def _headers_from(value, line):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise SlopeRuntimeError(f"Headers must be a locker, not {type_name(value)}", line)
+        return {str(k): format_value(v) for k, v in value.items()}
+
+    def _http_get(url, headers, line):
+        url = _require_text(url, 'radioBase', line)
+        if not url.startswith(('http://', 'https://')):
+            raise SlopeRuntimeError(f"radioBase needs an http(s) URL, got '{url}'", line)
+        if sys.platform == 'emscripten':
+            # Browser playground: ride the browser's own network stack.
+            try:
+                from pyodide.http import open_url
+                return open_url(url).read()
+            except Exception as e:
+                raise SlopeRuntimeError(f"Couldn't reach {url} from the browser "
+                                        f"(CORS or network): {e}", line)
+        request = urllib.request.Request(
+            url, headers={'User-Agent': f'SlopeScript/{VERSION}', **headers})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as resp:
+                return resp.read().decode('utf-8', 'replace')
+        except urllib.error.HTTPError as e:
+            raise SlopeRuntimeError(f"HTTP {e.code} {e.reason} from {url}", line)
+        except urllib.error.URLError as e:
+            raise SlopeRuntimeError(f"Couldn't reach {url}: {e.reason}", line)
+        except ValueError as e:
+            raise SlopeRuntimeError(f"Bad URL '{url}': {e}", line)
+
+    @builtin('radioBase', 1, 2, aliases=('fetch',))
+    def _radio_base(args, line, interp):
+        headers = _headers_from(args[1] if len(args) > 1 else None, line)
+        return _http_get(args[0], headers, line)
+
+    @builtin('radioJson', 1, 2, aliases=('fetchJson',))
+    def _radio_json(args, line, interp):
+        headers = _headers_from(args[1] if len(args) > 1 else None, line)
+        headers.setdefault('Accept', 'application/json')
+        body = _http_get(args[0], headers, line)
+        try:
+            return json.loads(body)
+        except ValueError as e:
+            raise SlopeRuntimeError(f"The radio answered, but it wasn't JSON: {e}", line)
+
+    @builtin('radioPost', 2, 3, aliases=('post',))
+    def _radio_post(args, line, interp):
+        url = _require_text(args[0], 'radioPost', line)
+        if not url.startswith(('http://', 'https://')):
+            raise SlopeRuntimeError(f"radioPost needs an http(s) URL, got '{url}'", line)
+        if sys.platform == 'emscripten':
+            raise SlopeRuntimeError("radioPost isn't available in the web playground — "
+                                    "run this program with the slope CLI", line)
+        payload = args[1]
+        headers = _headers_from(args[2] if len(args) > 2 else None, line)
+        if isinstance(payload, (dict, list)):
+            data = _to_json_text(payload, False, line).encode('utf-8')
+            headers.setdefault('Content-Type', 'application/json')
+        else:
+            data = format_value(payload).encode('utf-8')
+            headers.setdefault('Content-Type', 'text/plain; charset=utf-8')
+        request = urllib.request.Request(
+            url, data=data, method='POST',
+            headers={'User-Agent': f'SlopeScript/{VERSION}', **headers})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as resp:
+                return resp.read().decode('utf-8', 'replace')
+        except urllib.error.HTTPError as e:
+            raise SlopeRuntimeError(f"HTTP {e.code} {e.reason} from {url}", line)
+        except urllib.error.URLError as e:
+            raise SlopeRuntimeError(f"Couldn't reach {url}: {e.reason}", line)
+
+    # ---- JSON ----
+    def _to_json_text(value, pretty, line):
+        try:
+            return json.dumps(value, indent=2 if pretty else None, ensure_ascii=False)
+        except (TypeError, ValueError):
+            raise SlopeRuntimeError(f"Can't turn {type_name(value)} into JSON — "
+                                    "use numbers, text, conditions, whiteout, racks, and lockers", line)
+
+    @builtin('parseJson', 1, 1)
+    def _parse_json(args, line, interp):
+        text = _require_text(args[0], 'parseJson', line)
+        try:
+            return json.loads(text)
+        except ValueError as e:
+            raise SlopeRuntimeError(f"Couldn't parse JSON: {e}", line)
+
+    @builtin('toJson', 1, 2)
+    def _to_json(args, line, interp):
+        pretty = is_truthy(args[1]) if len(args) > 1 else False
+        return _to_json_text(args[0], pretty, line)
 
     # ---- misc ----
     @builtin('clock', 0, 0)

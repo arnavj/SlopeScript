@@ -1,0 +1,23 @@
+// radio_check.slope — call a real API over HTTP
+// Shows: radioBase/radioJson (HTTP GET), JSON, and patrol around network calls
+summit
+  carve "📻 Radioing the base..."
+
+  // Always patrol around the radio — mountains have dead zones.
+  patrol
+    pack wisdom = radioBase("https://api.github.com/zen")
+    carve "GitHub zen says: \"{wisdom}\""
+
+    pack repo = radioJson("https://api.github.com/repos/python/cpython")
+    carve "{repo.full_name} has {repo.stargazers_count} stars"
+  patroller (e)
+    carve "No signal up here ({e})"
+    carve "That's okay — the mountain doesn't need wifi."
+  runout
+
+  // JSON works offline too
+  pack report = toJson({ trail: "KT-22", open: powder, depth: 42 })
+  carve
+  carve "Snow report as JSON: {report}"
+  carve "...and back:", parseJson(report).depth, "inches"
+lodge
