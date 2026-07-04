@@ -1,35 +1,26 @@
-## 6. trail_selector.slope
-```
+// trail_selector.slope — pick trails for your skill level
+// Shows: lockers as lookup tables, has(), liftline
 summit
-  pack difficulty = chairlift("What's your skill level? (beginner/intermediate/expert)")
-  
-  carve ""
-  carve "🎿 Recommended trails for you:"
-  carve ""
-  
-  greenCircle (difficulty == "beginner")
-    pack trails = ["Bunny Hill", "Easy Street", "Gentle Slopes"]
-    liftline trail in trails
-      carve "✓"
-      carve trail
-    liftline
-  blueSquare (difficulty == "intermediate")
-    pack trails = ["Blue Bird", "Cruiser", "Mountain View"]
-    liftline trail in trails
-      carve "✓"
-      carve trail
-    liftline
-  blueSquare (difficulty == "expert")
-    pack trails = ["Corbet's Couloir", "The Widow Maker", "Death Chute"]
-    liftline trail in trails
-      carve "✓"
-      carve trail
-    liftline
+  pack trailsByLevel = {
+    beginner:     ["Bunny Hill", "Easy Street", "Gentle Slopes"],
+    intermediate: ["Blue Bird", "Cruiser", "Mountain View"],
+    expert:       ["Corbet's Couloir", "The Widow Maker", "Death Chute"]
+  }
+
+  pack level = lower(trim(chairlift("What's your skill level? (beginner/intermediate/expert)")))
+  carve
+
+  greenCircle (has(trailsByLevel, level))
+    carve "🎿 Recommended trails for you:"
+    carve
+    liftline trail in trailsByLevel[level]
+      carve "  ✓", trail
+    runout
   blackDiamond
     carve "Invalid skill level!"
     carve "Please choose: beginner, intermediate, or expert"
-  
-  carve ""
+  runout
+
+  carve
   carve "Have a great day on the slopes! 🏂"
 lodge
-```

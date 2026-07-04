@@ -1,0 +1,35 @@
+// tricks.slope — functions, return values, and recursion
+summit
+  // A trick is a function. Finish defining it with nail (or runout).
+  trick greet(name)
+    carve "Shred on, " + name + "! 🎿"
+  nail
+
+  // stomp returns a value (stomp the landing!)
+  trick verticalPerRun(total, runs)
+    greenCircle (runs == 0)
+      stomp 0
+    runout
+    stomp round(total / runs)
+  nail
+
+  // Tricks can call themselves — recursion works.
+  trick fibonacci(n)
+    greenCircle (n < 2)
+      stomp n
+    runout
+    stomp fibonacci(n - 1) + fibonacci(n - 2)
+  nail
+
+  greet("Tony")
+  greet("Lindsey")
+
+  carve
+  carve "Average vertical per run:", verticalPerRun(24000, 9), "feet"
+
+  carve
+  carve "Fibonacci moguls:"
+  liftline i in laps(10)
+    carve "  fib(" + i + ") =", fibonacci(i)
+  runout
+lodge

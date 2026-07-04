@@ -1,40 +1,33 @@
-## 5. vertical_tracker.slope
-```
+// vertical_tracker.slope — track vertical feet with lockers and liftlines
 summit
+  pack runs = [
+    { name: "Corbet's Couloir", vertical: 2500 },
+    { name: "KT-22",            vertical: 3000 },
+    { name: "Delirium Dive",    vertical: 2800 },
+    { name: "Rambo",            vertical: 2200 },
+    { name: "Steep Gullies",    vertical: 2600 }
+  ]
   pack totalVertical = 0
-  pack runs = ["Corbet's Couloir", "KT-22", "Delirium Dive", "Rambo", "Steep Gullies"]
-  pack verticals = [2500, 3000, 2800, 2200, 2600]
-  pack index = 0
-  
+
   carve "🏔️ VERTICAL FEET TRACKER"
   carve "━━━━━━━━━━━━━━━━━━━━━"
-  carve ""
-  
+  carve
+
   liftline run in runs
-    carve "Dropping into:"
-    carve run
-    
-    pack thisVertical = verticals[index]
-    carve "Vertical:"
-    carve thisVertical
-    carve "feet"
-    
-    pack totalVertical = totalVertical + thisVertical
-    pack index = index + 1
-    
-    carve ""
-  liftline
-  
+    carve "Dropping into:", run.name
+    carve "Vertical:", run.vertical, "feet"
+    totalVertical += run.vertical
+    carve
+  runout
+
   carve "━━━━━━━━━━━━━━━━━━━━━"
-  carve "TOTAL VERTICAL:"
-  carve totalVertical
-  carve "FEET! 🎿"
-  
+  carve "TOTAL VERTICAL:", totalVertical, "FEET! 🎿"
+
   greenCircle (totalVertical < 10000)
     carve "Good warmup day!"
   blueSquare (totalVertical < 20000)
     carve "Solid day on the mountain!"
   blackDiamond
     carve "EPIC day! You crushed it! 💪"
+  runout
 lodge
-```
