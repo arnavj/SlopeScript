@@ -5,10 +5,13 @@ Run with:  python3 -m unittest discover tests
 """
 
 import io
+import json
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -769,6 +772,133 @@ runout
         with self.assertRaises(SlopeRuntimeError) as ctx:
             run_source('summit\n  traverse "ghost.slope"\nlodge\n', base_dir=str(self.root))
         self.assertIn("Can't traverse", str(ctx.exception))
+
+
+class _RadioHandler(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, code, body, ctype='text/plain; charset=utf-8'):
+        data = body.encode('utf-8')
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path == '/text':
+            self._send(200, 'fresh powder')
+        elif self.path == '/json':
+            self._send(200, json.dumps({"trail": "KT-22", "open": True, "depth": 42}),
+                       'application/json')
+        elif self.path == '/whoami':
+            self._send(200, self.headers.get('X-Pass', 'nobody'))
+        else:
+            self._send(404, 'no such trail')
+
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(length).decode('utf-8')
+        self._send(200, json.dumps({
+            "echo": body, "type": self.headers.get('Content-Type', '')}), 'application/json')
+
+
+class TestRadio(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), _RadioHandler)
+        cls.base = f"http://127.0.0.1:{cls.server.server_address[1]}"
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def test_radio_base(self):
+        self.assertEqual(run(program(f'carve radioBase("{self.base}/text")')), "fresh powder\n")
+
+    def test_radio_json(self):
+        code = program(f'pack r = radioJson("{self.base}/json")\ncarve r.trail, r.open, r.depth')
+        self.assertEqual(run(code), "KT-22 powder 42\n")
+
+    def test_headers_locker(self):
+        code = program(f'carve radioBase("{self.base}/whoami", {{ "X-Pass": "patroller" }})')
+        self.assertEqual(run(code), "patroller\n")
+
+    def test_http_error_is_catchable(self):
+        code = program(f"""
+patrol
+  carve radioBase("{self.base}/closed")
+patroller (e)
+  carve "caught:", e
+runout
+""")
+        self.assertIn("HTTP 404", run(code))
+
+    def test_unreachable_is_catchable(self):
+        code = program("""
+patrol
+  carve radioBase("http://127.0.0.1:1/nope")
+patroller (e)
+  carve "no signal"
+runout
+""")
+        self.assertEqual(run(code), "no signal\n")
+
+    def test_bad_url_scheme(self):
+        with self.assertRaises(SlopeRuntimeError):
+            run(program('carve radioBase("ftp://mountain")'))
+
+    def test_post_locker_sends_json(self):
+        code = program(f"""
+pack reply = parseJson(radioPost("{self.base}/echo", {{ trail: "Rambo", laps: 3 }}))
+carve reply.type
+carve parseJson(reply.echo).trail
+""")
+        self.assertEqual(run(code), "application/json\nRambo\n")
+
+    def test_post_text(self):
+        code = program(f"""
+pack reply = parseJson(radioPost("{self.base}/echo", "hello base"))
+carve reply.echo
+""")
+        self.assertEqual(run(code), "hello base\n")
+
+    def test_fetch_aliases(self):
+        self.assertEqual(run(program(f'carve fetch("{self.base}/text")')), "fresh powder\n")
+        code = program(f'carve fetchJson("{self.base}/json").depth')
+        self.assertEqual(run(code), "42\n")
+
+
+class TestJson(unittest.TestCase):
+    def test_round_trip(self):
+        code = program("""
+pack report = { trail: "KT-22", open: powder, depth: 42, tags: ["steep", "icy"], base: whiteout }
+pack text = toJson(report)
+pack back = parseJson(text)
+carve back.trail, back.open, back.depth, back.tags[1], back.base
+""")
+        self.assertEqual(run(code), "KT-22 powder 42 icy whiteout\n")
+
+    def test_pretty(self):
+        out = run(program('carve toJson({ a: 1 }, powder)'))
+        self.assertIn('\n  "a": 1\n', out)
+
+    def test_parse_error_catchable(self):
+        code = program("""
+patrol
+  parseJson("\\{not json")
+patroller (e)
+  carve "bad json"
+runout
+""")
+        self.assertEqual(run(code), "bad json\n")
+
+    def test_tricks_dont_serialize(self):
+        with self.assertRaises(SlopeRuntimeError):
+            run(program('toJson(trick(x) stomp x runout)'))
 
 
 class TestErrorReporting(unittest.TestCase):
