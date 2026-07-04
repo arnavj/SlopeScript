@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.1.0 — 2026-07-04
+
+The "practical release": SlopeScript programs can now span files, talk to
+files, treat tricks as values, build text painlessly — and run in a browser.
+
+### Added
+- **Browser playground** (`playground/`): the real interpreter compiled to
+  WebAssembly via Pyodide — editor, examples, `chairlift` input via browser
+  prompts, and shareable program links. Deploys to GitHub Pages
+  automatically (`.github/workflows/pages.yml`; enable Pages → Source:
+  GitHub Actions once).
+- **String interpolation**: `"Run #{n}: {vertical * 2} feet"` — any
+  expression inside `{...}` in text; `\{` escapes a literal brace.
+- **First-class tricks**: tricks (and builtins) are values — store them,
+  pass them, return them. Anonymous tricks:
+  `trick(n) stomp n * n runout`. Closures capture their scope. Any
+  expression that evaluates to a trick is callable: `rack[0](x)`,
+  `locker.fn(x)`.
+- **Higher-order builtins**: `map`, `filter`, `reduce`, `each`.
+- **Modules**: `traverse "lib/slopemath.slope"` loads another file once,
+  relative to the importing file; cycles and repeats are handled.
+- **File I/O**: `readFile`, `readLines`, `writeFile`, `appendFile`,
+  `fileExists`, `deleteFile` — all failures catchable by ski patrol.
+- New examples: `higher_order.slope`, `mountain_tour.slope` (+
+  `lib/slopemath.slope`), `trail_journal.slope`; `benchmarks/`.
+- Test suite grown to 113 tests.
+
+### Changed
+- Interpreter performance: fast paths for number math, truthiness, and
+  trick calls — measured ~1.4x on tight loops and ~1.2x on call-heavy
+  recursion (`benchmarks/`). Still a tree-walker; still not for
+  number-crunching.
+
 ## 2.0.0 — 2026-07-04
 
 SlopeScript grows up: from a demo lexer/parser into a complete, tested,

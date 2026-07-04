@@ -1,0 +1,23 @@
+// lib/slopemath.slope — a reusable library of tricks
+// Load it from another program with: traverse "lib/slopemath.slope"
+summit
+  pack SLOPEMATH_VERSION = "1.0"
+
+  trick feetToMeters(feet)
+    stomp round(feet / 3.28)
+  nail
+
+  trick gradient(rise, distance)
+    stomp round(rise / distance * 100, 1)
+  nail
+
+  trick steepness(percent)
+    greenCircle (percent < 25)
+      stomp "green circle"
+    blueSquare (percent < 40)
+      stomp "blue square"
+    blackDiamond
+      stomp "black diamond"
+    runout
+  nail
+lodge

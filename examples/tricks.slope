@@ -30,6 +30,6 @@ summit
   carve
   carve "Fibonacci moguls:"
   liftline i in laps(10)
-    carve "  fib(" + i + ") =", fibonacci(i)
+    carve "  fib({i}) = {fibonacci(i)}"
   runout
 lodge
