@@ -18,10 +18,11 @@ functions, structured error handling, and a skiing-shaped syntax. Programs
 - [10. Racks (arrays)](#10-racks-arrays)
 - [11. Lockers (dictionaries)](#11-lockers-dictionaries)
 - [12. Ski patrol (error handling)](#12-ski-patrol-error-handling)
-- [13. The Base Lodge (standard library)](#13-the-base-lodge-standard-library)
-- [14. The REPL](#14-the-repl)
-- [15. Grammar](#15-grammar)
-- [16. Style guide](#16-style-guide)
+- [13. Modules (traverse)](#13-modules-traverse)
+- [14. The Base Lodge (standard library)](#14-the-base-lodge-standard-library)
+- [15. The REPL](#15-the-repl)
+- [16. Grammar](#16-grammar)
+- [17. Style guide](#17-style-guide)
 
 ---
 
@@ -52,10 +53,11 @@ one another — no semicolons.
   Convention is `camelCase`.
 - **Keywords** (reserved): `summit lodge pack carve greenCircle blueSquare
   blackDiamond gondola liftline in trick nail runout stomp bail sendIt
-  powder ice whiteout patrol patroller avalanche`
+  powder ice whiteout patrol patroller avalanche traverse`
 - **Numbers**: `42`, `3.14`, `-7` (unary minus). Integers and decimals.
 - **Text**: double- or single-quoted: `"powder day"`, `'corduroy'`.
-  Escapes: `\n` `\t` `\r` `\\` `\"` `\'` `\0`. Strings cannot span lines.
+  Escapes: `\n` `\t` `\r` `\\` `\"` `\'` `\0` `\{`. Strings cannot span lines.
+  Text interpolates `{expression}` — see [§6](#6-output-and-input).
 - **Comments**: `// to end of line` and `/* block comments */`.
 
 ## 3. Types and values
@@ -141,6 +143,18 @@ carve "Run #" + n, "-", vertical, "feet"
 carve                      // blank line
 ```
 
+**Interpolation.** Any text literal may embed `{expression}`; the expression
+is evaluated and formatted in place. Escape a literal brace as `\{`; empty
+braces `{}` stay literal.
+
+```slopescript
+carve "Run #{n}: {vertical} feet ({round(vertical / 3.28)} m)"
+pack label = "avg {total / runs} feet per run"
+```
+
+An unclosed `{` in text, or a brace containing an invalid expression, is a
+syntax error that points at the interpolation.
+
 **`chairlift(prompt)`** reads one line of input as text. Convert with
 `number(...)` when you need one. When input runs out (end of file), the
 lifts close: the program stops with a `LiftsClosed` report that `patroller`
@@ -214,6 +228,32 @@ nail
   outward, so tricks can update variables from enclosing scopes.
 - A trick defined with the same name as a builtin shadows the builtin.
 
+**Tricks are first-class values.** A trick name (or a Base Lodge builtin
+name) evaluates to the trick itself, so tricks can be stored, passed, and
+returned. Closures capture the scope where the trick was made. An unnamed
+trick is written inline as an expression:
+
+```slopescript
+pack square = trick(n) stomp n * n runout
+carve map([1, 2, 3], square)                     // [1, 4, 9]
+carve filter(runs, trick(f) stomp f > 2400 runout)
+pack ops = { toMeters: trick(f) stomp f / 3.28 runout }
+carve ops.toMeters(3280)
+
+trick makeCounter()
+  pack count = 0
+  stomp trick()
+    count += 1
+    stomp count
+  runout
+nail
+```
+
+Any expression that evaluates to a trick can be called: `rack[0](x)`,
+`locker.fn(x)`, `makeCounter()()`. Calling anything that isn't a trick is a
+runtime error. The opening `(` of a call must be on the same line as the
+expression being called.
+
 ## 10. Racks (arrays)
 
 ```slopescript
@@ -271,7 +311,28 @@ runout
 - Uncaught errors stop the program with a report giving file and line.
 - Syntax errors and the end of input (`LiftsClosed`) are not catchable.
 
-## 13. The Base Lodge (standard library)
+## 13. Modules (traverse)
+
+Split a program across files with `traverse`:
+
+```slopescript
+summit
+  traverse "lib/slopemath.slope"   // path relative to this file
+  carve gradient(900, 2800)
+lodge
+```
+
+- The traversed file is a normal SlopeScript program; it runs once, in the
+  global scope, so its tricks and packed gear become available to the
+  traverser. The `.slope` extension may be omitted.
+- Repeat traverses of the same file are no-ops; mutual traverses (a cycle)
+  are a runtime error.
+- The path may be any expression that evaluates to text. Relative paths
+  resolve against the directory of the file doing the traversing.
+- Errors inside a traversed file are reported with `(while traversing ...)`
+  appended.
+
+## 14. The Base Lodge (standard library)
 
 All functions are global — no imports. Themed names are canonical; the
 plain aliases in parentheses work identically.
@@ -303,6 +364,14 @@ plain aliases in parentheses work identically.
 | `join(rack, sep)` | rack joined into text |
 | `sum(rack)` / `min(...)` / `max(...)` | totals and extremes |
 
+### Higher-order (tricks that take tricks)
+| Function | Returns |
+|---|---|
+| `map(rack, fn)` | new rack of `fn(item)` results |
+| `filter(rack, fn)` | items where `fn(item)` is truthy |
+| `reduce(rack, fn, start?)` | rack folded to one value with `fn(acc, item)` |
+| `each(rack, fn)` | calls `fn(item)` for every item, returns whiteout |
+
 ### Text
 | Function | Returns |
 |---|---|
@@ -330,12 +399,25 @@ plain aliases in parentheses work identically.
 | `snowflake()` *(random)* | random decimal in [0, 1) |
 | `snowflake(low, high)` | random whole number from low to high, inclusive |
 
+### Files (the trail journal)
+| Function | Returns |
+|---|---|
+| `readFile(path)` | whole file as text |
+| `readLines(path)` | rack of lines (no trailing newlines) |
+| `writeFile(path, value)` | writes (replacing the file), returns whiteout |
+| `appendFile(path, value)` | appends, returns whiteout |
+| `fileExists(path)` | condition |
+| `deleteFile(path)` | powder if deleted, ice if it wasn't there |
+
+Paths resolve against the working directory. Every file failure (missing
+file, permissions, ...) is a runtime error a `patroller` can catch.
+
 ### Misc
 | Function | Returns |
 |---|---|
 | `clock()` | seconds since the epoch (time programs with it) |
 
-## 14. The REPL
+## 15. The REPL
 
 Run `slope` with no arguments for an interactive session:
 
@@ -349,7 +431,7 @@ Run `slope` with no arguments for an interactive session:
 
 Piping a file into `slope` runs it as a program (`summit`/`lodge` required).
 
-## 15. Grammar
+## 16. Grammar
 
 EBNF, ignoring whitespace and comments:
 
@@ -358,7 +440,8 @@ program     = "summit" { statement } "lodge" ;
 
 statement   = pack | assign | carve | conditional | gondola | liftline
             | trickdef | "stomp" [ expression ] | "bail" | "sendIt"
-            | patrol | "avalanche" expression | expression ;
+            | patrol | "avalanche" expression
+            | "traverse" expression | expression ;
 
 pack        = "pack" IDENT "=" expression ;
 assign      = target ( "=" | "+=" | "-=" | "*=" | "/=" ) expression ;
@@ -389,17 +472,20 @@ power       = postfix [ "**" unary ] ;
 postfix     = primary { "[" expression "]" | "." IDENT
                       | "(" [ expression { "," expression } ] ")" } ;
 primary     = NUMBER | STRING | "powder" | "ice" | "whiteout" | IDENT
-            | "(" expression ")" | rack | locker ;
+            | "(" expression ")" | rack | locker | anontrick ;
+anontrick   = "trick" "(" [ IDENT { "," IDENT } ] ")"
+              { statement } ( "nail" | "runout" ) ;
 rack        = "[" [ expression { "," expression } ] "]" ;
 locker      = "{" [ lockerpair { "," lockerpair } ] "}" ;
 lockerpair  = ( IDENT | STRING | NUMBER ) ":" expression ;
 ```
 
-Calls apply only to plain names (`f(x)`, not `rack[0](x)`).
-`carve` and `stomp` only take arguments that start on their own line, so
-statements never bleed into each other.
+STRING literals may contain `{expression}` interpolations (§6). A call's
+opening `(` must sit on the same line as the callee, and `carve`/`stomp`
+only take arguments that start on their own line — so statements never
+bleed into each other.
 
-## 16. Style guide
+## 17. Style guide
 
 - Indent two spaces per block. The interpreter doesn't care; humans do.
 - `camelCase` names: `verticalFeet`, `openTrails`.

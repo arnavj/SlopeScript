@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SlopeScript Playground — code that flows downhill 🎿</title>
+<meta name="description" content="Write and run SlopeScript, the skiing-themed programming language, right in your browser. No install needed.">
+<style>
+  :root {
+    --bg: #f4f7fb; --panel: #ffffff; --ink: #1b2a3a; --muted: #5b7085;
+    --accent: #2563eb; --accent-ink: #ffffff; --edge: #dbe4ee;
+    --editor-bg: #0f1b2d; --editor-ink: #e6eefb; --out-bg: #0b1626;
+    --ok: #16a34a; --err: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1220; --panel: #121c2e; --ink: #e6eefb; --muted: #8ba1b9;
+      --edge: #223350;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 55%, #60a5fa 100%);
+    color: #fff; padding: 1.1rem 1.4rem;
+    display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.25rem; margin: 0; letter-spacing: .3px; }
+  header .tag { opacity: .9; font-size: .9rem; }
+  header a { color: #dbeafe; }
+  .wrap {
+    max-width: 1200px; margin: 0 auto; padding: 1rem 1.4rem 2.5rem;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+  }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 12px;
+    overflow: hidden; display: flex; flex-direction: column; min-height: 480px;
+  }
+  .panel .bar {
+    display: flex; gap: .5rem; align-items: center; padding: .55rem .8rem;
+    border-bottom: 1px solid var(--edge); flex-wrap: wrap;
+  }
+  .bar .title { font-weight: 600; font-size: .95rem; margin-right: auto; }
+  button, select {
+    font: inherit; border-radius: 8px; border: 1px solid var(--edge);
+    background: var(--panel); color: var(--ink); padding: .38rem .8rem; cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: wait; }
+  textarea#editor {
+    flex: 1; width: 100%; border: 0; resize: none; padding: 1rem;
+    background: var(--editor-bg); color: var(--editor-ink);
+    font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    outline: none; white-space: pre; overflow: auto; tab-size: 2;
+  }
+  pre#output {
+    flex: 1; margin: 0; padding: 1rem; overflow: auto;
+    background: var(--out-bg); color: #d7e5f7;
+    font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  #status { font-size: .85rem; color: var(--muted); }
+  #status.ok { color: var(--ok); } #status.err { color: var(--err); }
+  .hint { grid-column: 1 / -1; color: var(--muted); font-size: .88rem; line-height: 1.5; }
+  .hint code { background: var(--panel); border: 1px solid var(--edge); border-radius: 5px; padding: .05rem .35rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎿 SlopeScript Playground</h1>
+  <span class="tag">the language where code flows downhill — running entirely in your browser</span>
+  <span class="tag" style="margin-left:auto"><a href="https://github.com/arnavj/slopescript" target="_blank" rel="noopener">GitHub ↗</a></span>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="bar">
+      <span class="title">summit … lodge</span>
+      <select id="examples" title="Load an example"></select>
+      <button id="share" title="Copy a link to this program">Share</button>
+      <button id="run" class="primary">▶ Run (Ctrl+Enter)</button>
+    </div>
+    <textarea id="editor" spellcheck="false" aria-label="SlopeScript editor"></textarea>
+  </div>
+  <div class="panel">
+    <div class="bar">
+      <span class="title">Fresh tracks (output)</span>
+      <span id="status">Loading the interpreter…</span>
+      <button id="clear">Clear</button>
+    </div>
+    <pre id="output"></pre>
+  </div>
+  <p class="hint">
+    <b>How it works:</b> the real SlopeScript interpreter (Python, single file) runs in your
+    browser via WebAssembly (Pyodide) — nothing is sent to a server. <code>chairlift(...)</code>
+    input pops up a browser prompt. An infinite <code>gondola</code> will freeze the tab, so keep
+    a <code>bail</code> handy (refresh if you get buried). Docs:
+    <a href="https://github.com/arnavj/slopescript/blob/main/LANGUAGE_SPEC.md" target="_blank" rel="noopener">language spec</a>.
+  </p>
+</div>
+
+<script>
+const EXAMPLES = {
+  "Hello, slopes": `summit
+  carve "🎿 Hello from the slopes!"
+  pack name = "friend"
+  carve "Welcome to SlopeScript, {name}!"
+lodge`,
+  "A day on the mountain": `summit
+  pack runs = 0
+  pack vertical = 0
+
+  gondola (runs < 8)
+    runs += 1
+    vertical += 2500
+
+    greenCircle (runs < 3)
+      carve "Run {runs}: warming up on groomers..."
+    blueSquare (runs < 6)
+      carve "Run {runs}: getting into the groove!"
+    blackDiamond
+      carve "Run {runs}: sending it! 💨"
+    runout
+  runout
+
+  carve
+  carve "Total: {vertical} vertical feet. Hot chocolate time! ☕"
+lodge`,
+  "Tricks & recursion": `summit
+  trick fibonacci(n)
+    greenCircle (n < 2)
+      stomp n
+    runout
+    stomp fibonacci(n - 1) + fibonacci(n - 2)
+  nail
+
+  liftline i in laps(12)
+    carve "fib({i}) = {fibonacci(i)}"
+  runout
+lodge`,
+  "Higher-order tricks": `summit
+  pack runs = [2500, 3100, 1800, 2900, 2200]
+
+  pack big = filter(runs, trick(feet) stomp feet > 2400 runout)
+  pack doubled = map(big, trick(feet) stomp feet * 2 runout)
+  pack total = reduce(runs, trick(a, b) stomp a + b runout)
+
+  carve "big runs: {big}"
+  carve "doubled: {doubled}"
+  carve "day total: {total} feet"
+lodge`,
+  "Lockers & liftlines": `summit
+  pack menu = {
+    "hot chocolate": 5,
+    "chili bowl": 12,
+    "waffle": 9
+  }
+
+  carve "☕ BASE LODGE MENU"
+  liftline item in menu
+    carve "  {item} — \${menu[item]}"
+  runout
+
+  pack order = ["hot chocolate", "waffle"]
+  pack total = 0
+  liftline item in order
+    total += menu[item]
+  runout
+  carve
+  carve "Your order comes to \${total}"
+lodge`,
+  "Ski patrol (errors)": `summit
+  trick openTrail(name, snowDepth)
+    greenCircle (snowDepth < 6)
+      avalanche { trail: name, reason: "not enough snow" }
+    runout
+    carve "✅ {name} is open!"
+  nail
+
+  liftline attempt in [["Corbet's", 24], ["Bunny Hill", 2]]
+    patrol
+      openTrail(attempt[0], attempt[1])
+    patroller (report)
+      carve "🚧 {report.trail} is closed: {report.reason}"
+    runout
+  runout
+lodge`,
+  "Guess the number (input)": `summit
+  pack secret = snowflake(1, 20)
+  pack guess = 0
+  pack tries = 0
+
+  carve "I'm thinking of a number from 1 to 20..."
+
+  gondola (guess != secret)
+    patrol
+      guess = number(chairlift("Your guess?"))
+    patroller (e)
+      carve "Numbers only, please!"
+      sendIt
+    runout
+    tries += 1
+    greenCircle (guess < secret)
+      carve "{guess} is too low — go steeper!"
+    blueSquare (guess > secret)
+      carve "{guess} is too high — ease up!"
+    blackDiamond
+      carve "🎉 Got it in {tries} tries!"
+    runout
+  runout
+lodge`
+};
+
+const $ = id => document.getElementById(id);
+const editor = $('editor'), output = $('output'), status = $('status');
+let pyodide = null, webRun = null;
+
+// Populate examples dropdown.
+for (const name of Object.keys(EXAMPLES)) {
+  const opt = document.createElement('option');
+  opt.value = name; opt.textContent = name;
+  $('examples').appendChild(opt);
+}
+$('examples').addEventListener('change', e => {
+  editor.value = EXAMPLES[e.target.value];
+  history.replaceState(null, '', location.pathname);
+});
+
+// Load initial program: URL hash beats default example.
+function loadFromHash() {
+  if (location.hash.startsWith('#code=')) {
+    try {
+      editor.value = decodeURIComponent(escape(atob(location.hash.slice(6))));
+      return true;
+    } catch (e) { /* fall through */ }
+  }
+  return false;
+}
+if (!loadFromHash()) editor.value = EXAMPLES["Hello, slopes"];
+
+$('share').addEventListener('click', async () => {
+  const hash = '#code=' + btoa(unescape(encodeURIComponent(editor.value)));
+  const url = location.origin + location.pathname + hash;
+  history.replaceState(null, '', hash);
+  try {
+    await navigator.clipboard.writeText(url);
+    flash('Link copied — share your run!');
+  } catch (e) {
+    flash('Link is in the address bar.');
+  }
+});
+
+$('clear').addEventListener('click', () => { output.textContent = ''; });
+
+function flash(msg, cls = 'ok') {
+  status.textContent = msg; status.className = cls;
+}
+
+function appendOut(text) {
+  output.textContent += text;
+  output.scrollTop = output.scrollHeight;
+}
+
+// Tab inserts two spaces; Ctrl/Cmd+Enter runs.
+editor.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart, epos = editor.selectionEnd;
+    editor.value = editor.value.slice(0, s) + '  ' + editor.value.slice(epos);
+    editor.selectionStart = editor.selectionEnd = s + 2;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runProgram(); }
+});
+
+async function boot() {
+  try {
+    // ?pyodide=<base-url> lets you point at a self-hosted Pyodide build.
+    const base = new URLSearchParams(location.search).get('pyodide')
+      || 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+    const { loadPyodide } = await import(base + 'pyodide.mjs');
+    pyodide = await loadPyodide({ indexURL: base });
+    const resp = await fetch('slopescript.py');
+    if (!resp.ok) throw new Error('could not fetch slopescript.py (' + resp.status + ')');
+    pyodide.FS.writeFile('slopescript.py', await resp.text());
+    pyodide.runPython(`
+import io, sys, contextlib
+sys.setrecursionlimit(8000)
+import slopescript as S
+
+class _JSWriter(io.TextIOBase):
+    def __init__(self, cb): self.cb = cb
+    def write(self, s):
+        self.cb(s); return len(s)
+
+def _make_input(js_prompt):
+    def _input(prompt=''):
+        v = js_prompt(str(prompt))
+        if v is None:
+            raise EOFError
+        return str(v)
+    return _input
+
+def web_run(code, js_write, js_prompt):
+    import builtins
+    builtins.input = _make_input(js_prompt)
+    writer = _JSWriter(js_write)
+    interp = S.Interpreter()
+    try:
+        with contextlib.redirect_stdout(writer):
+            S.run_source(code, interp)
+        return ""
+    except S.SlopeError as e:
+        return S.report_error(e)
+    except RecursionError:
+        return "⛑️  Ski Patrol Report: the program went too deep — avalanche risk"
+`);
+    webRun = pyodide.globals.get('web_run');
+    flash('Lifts are spinning — ready!', 'ok');
+    $('run').disabled = false;
+  } catch (err) {
+    flash('Failed to load: ' + err.message, 'err');
+    appendOut('Could not start the interpreter. Check your connection and refresh.\n');
+  }
+}
+
+function jsPrompt(text) {
+  const v = window.prompt(text || 'chairlift:');
+  return v === null ? null : v;
+}
+
+async function runProgram() {
+  if (!webRun) return;
+  output.textContent = '';
+  flash('Dropping in…');
+  $('run').disabled = true;
+  // Let the UI paint before the (synchronous) run.
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const err = webRun(editor.value, appendOut, jsPrompt);
+    if (err) { appendOut((output.textContent ? '\n' : '') + err + '\n'); flash('Wipeout — see report', 'err'); }
+    else flash('Clean run! 🏁', 'ok');
+  } catch (e) {
+    appendOut('\nUnexpected wipeout: ' + e.message + '\n');
+    flash('Wipeout', 'err');
+  } finally {
+    $('run').disabled = false;
+  }
+}
+
+$('run').disabled = true;
+$('run').addEventListener('click', runProgram);
+boot();
+</script>
+</body>
+</html>

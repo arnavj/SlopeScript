@@ -1,0 +1,25 @@
+// trail_journal.slope — file I/O: keep a journal of your runs
+summit
+  pack journal = "trail_journal.txt"
+
+  // Start fresh and log a few runs
+  writeFile(journal, "TRAIL JOURNAL\n")
+  liftline entry in [
+    { trail: "Corbet's Couloir", feet: 2500 },
+    { trail: "KT-22",            feet: 3000 },
+    { trail: "Rambo",            feet: 2200 }
+  ]
+    appendFile(journal, "{entry.trail}: {entry.feet} feet\n")
+  runout
+
+  // Read it back
+  carve "📓 Reading {journal}:"
+  liftline line in readLines(journal)
+    carve "  ", line
+  runout
+
+  carve
+  carve "journal exists: {fileExists(journal)}"
+  deleteFile(journal)
+  carve "after cleanup:  {fileExists(journal)}"
+lodge

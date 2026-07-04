@@ -12,7 +12,7 @@
 <p align="center">
   <img alt="Python 3.8+" src="https://img.shields.io/badge/python-3.8%2B-blue">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-orange">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.1.0-orange">
   <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-brightgreen">
 </p>
 
@@ -26,10 +26,19 @@ summit
   nail
 
   liftline i in laps(10)
-    carve "fib(" + i + ") =", fibonacci(i)
+    carve "fib({i}) = {fibonacci(i)}"
   runout
 lodge
 ```
+
+## 🌐 Try it in your browser
+
+The **[SlopeScript Playground](playground/index.html)** runs the real
+interpreter in your browser via WebAssembly — no install, nothing sent to a
+server. Pick an example, edit it, hit Run, and share your program as a link.
+Enable GitHub Pages for this repo (Settings → Pages → Source: *GitHub
+Actions*) and the playground deploys automatically to
+`https://<your-user>.github.io/slopescript/`.
 
 Every program starts at the **summit** and ends at the **lodge**. In between you
 pack gear (variables), carve output into the snow, ride gondolas (while loops)
@@ -85,7 +94,7 @@ lodge
 
 ```slopescript
 carve "Hello, skier!"                 // print (multiple values, comma-separated)
-carve "Total: " + 3 * 800 + " feet"   // + joins text with anything
+carve "You did {runs} runs — {runs * 2500} feet!"   // {…} interpolates any expression
 pack answer = chairlift("Your name?") // prompt for input
 pack age = number(chairlift("Age?"))  // convert text to a number
 ```
@@ -141,7 +150,37 @@ nail                        // nail finishes the trick
 carve verticalPerRun(24000, 9), "feet per run"
 ```
 
-Tricks support recursion, local scope, and closures. They're proper functions.
+Tricks are proper, **first-class** functions — recursion, closures, and all.
+Pass them around, stash them in lockers, or write them inline:
+
+```slopescript
+pack runs = [2500, 3100, 1800, 2900]
+carve filter(runs, trick(feet) stomp feet > 2400 runout)   // [2500, 3100, 2900]
+carve map(runs, trick(feet) stomp feet / 3.28 runout)      // feet → meters
+carve reduce(runs, trick(a, b) stomp a + b runout)         // day total
+```
+
+### Modules — traverse to another trail
+
+```slopescript
+traverse "lib/slopemath.slope"   // load another file's tricks and gear
+carve gradient(900, 2800)
+```
+
+Each file loads once (repeat traverses are no-ops) and cycles are caught.
+
+### Files — the trail journal
+
+```slopescript
+writeFile("journal.txt", "TRAIL JOURNAL\n")
+appendFile("journal.txt", "KT-22: 3000 feet\n")
+liftline line in readLines("journal.txt")
+  carve line
+runout
+```
+
+`readFile`, `readLines`, `writeFile`, `appendFile`, `fileExists`,
+`deleteFile` — and every failure is catchable by ski patrol.
 
 ### Racks & lockers — arrays and dictionaries
 
@@ -187,8 +226,10 @@ Around 40 built-in functions, no imports needed. Highlights:
 | I/O | `chairlift(prompt)` |
 | Convert | `number(x)`, `text(x)`, `type(x)` |
 | Racks | `length`, `push`, `pop`, `laps(n)`, `groom` (sort), `flip` (reverse), `contains`, `find`, `slice`, `join`, `sum`, `min`, `max` |
+| Higher-order | `map`, `filter`, `reduce`, `each` |
 | Text | `upper`, `lower`, `trim`, `split`, `replace`, `startsWith`, `endsWith` |
 | Lockers | `keys`, `values`, `has`, `drop` |
+| Files | `readFile`, `readLines`, `writeFile`, `appendFile`, `fileExists`, `deleteFile` |
 | Math | `abs`, `round`, `basin` (floor), `cornice` (ceil), `sqrt`, `snowflake` (random) |
 | Misc | `clock()` |
 
@@ -226,6 +267,9 @@ Every program in [`examples/`](examples/) runs out of the box:
 | [`counter.slope`](examples/counter.slope) | Gondola loops |
 | [`ski_day.slope`](examples/ski_day.slope) | Loops + trail ratings together |
 | [`tricks.slope`](examples/tricks.slope) | Functions, returns, recursion |
+| [`higher_order.slope`](examples/higher_order.slope) | map/filter/reduce, closures, anonymous tricks |
+| [`mountain_tour.slope`](examples/mountain_tour.slope) | Modules with `traverse` |
+| [`trail_journal.slope`](examples/trail_journal.slope) | File I/O |
 | [`lodge_menu.slope`](examples/lodge_menu.slope) | Lockers (dictionaries) |
 | [`ski_patrol.slope`](examples/ski_patrol.slope) | Error handling |
 | [`vertical_tracker.slope`](examples/vertical_tracker.slope) | Racks of lockers |
@@ -247,11 +291,34 @@ Every program in [`examples/`](examples/) runs out of the box:
 | `blackDiamond` | else | `powder` / `ice` | true / false |
 | `gondola` | while | `whiteout` | null |
 | `liftline x in r` | for-each | `runout` | end of block |
+| `traverse "f"` | import a file | `"x is {expr}"` | interpolation |
+
+## 🧭 Why SlopeScript?
+
+Learning-to-code tools tend to be either toys (fun, but you outgrow them in a
+week and none of it transfers) or real languages (transferable, but the first
+error message sends you to Stack Overflow). SlopeScript sits deliberately in
+the gap:
+
+- **It's a real language** — first-class functions, closures, data
+  structures, modules, error handling. Every concept transfers 1:1 to
+  Python or JavaScript.
+- **It's genuinely friendly** — errors name the line and tell you how to
+  fix it, the whole language fits on one cheat sheet, and the metaphor does
+  real pedagogical work (`patrol` catches wipeouts; blocks end at the
+  `runout`; a `traverse` loop is an error because two trails can't lead to
+  each other).
+- **Zero setup at every stage** — playground in the browser, then one
+  single-file interpreter, then `pip install`. No toolchain cliff.
+- **It has a home crowd** — ski towns, ski clubs, and STEM programs get an
+  on-theme way in. Nobody's excited to demo generic pseudo-code on the
+  lodge projector; a guess-the-number game called *guess the snow depth* is
+  a different story.
 
 ## 🧪 Development
 
 ```bash
-python3 -m unittest discover tests    # run the test suite (90 tests)
+python3 -m unittest discover tests    # run the test suite (113 tests)
 ```
 
 The whole language lives in [`slopescript.py`](slopescript.py) — lexer, parser,

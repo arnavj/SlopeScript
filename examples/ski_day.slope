@@ -12,7 +12,7 @@ summit
     pack thisRun = 2500
     verticalFeet += thisRun
 
-    carve "Run #" + runs + " - Dropped", thisRun, "feet!"
+    carve "Run #{runs} - Dropped {thisRun} feet!"
 
     greenCircle (runs < 3)
       carve "  → Warming up on groomers..."
