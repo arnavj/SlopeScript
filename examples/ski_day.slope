@@ -1,39 +1,31 @@
-## 3. ski_day.slope
-```
+// ski_day.slope — a full day on the mountain
 summit
   pack runs = 0
   pack verticalFeet = 0
   pack maxRuns = 10
-  
+
   carve "🎿 Welcome to SlopeScript Mountain! 🏔️"
-  carve ""
-  
+  carve
+
   gondola (runs < maxRuns)
-    pack runs = runs + 1
+    runs += 1
     pack thisRun = 2500
-    pack verticalFeet = verticalFeet + thisRun
-    
-    carve "Run #"
-    carve runs
-    carve "- Dropped"
-    carve thisRun
-    carve "feet!"
-    
+    verticalFeet += thisRun
+
+    carve "Run #" + runs + " - Dropped", thisRun, "feet!"
+
     greenCircle (runs < 3)
       carve "  → Warming up on groomers..."
     blueSquare (runs < 7)
       carve "  → Getting into the groove!"
     blackDiamond
       carve "  → Sending it! 💨"
-    
-    carve ""
-  gondola
-  
+    runout
+  runout
+
+  carve
   carve "━━━━━━━━━━━━━━━━━━━━━"
   carve "Session complete!"
-  carve "Total vertical:"
-  carve verticalFeet
-  carve "feet!"
+  carve "Total vertical:", verticalFeet, "feet!"
   carve "Time for hot chocolate! ☕"
 lodge
-```

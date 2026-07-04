@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run test suite
+        run: python -m unittest discover tests -v
+      - name: Run every example
+        run: |
+          for f in examples/*.slope; do
+            case "$f" in
+              *guess_number*|*trail_selector*) input="expert" ;;
+              *) input="" ;;
+            esac
+            echo "=== $f ==="
+            if [ "$f" = "examples/guess_number.slope" ]; then
+              # Random secret: feed a full 1-100 sweep so the game always ends.
+              seq 1 100 | python slopescript.py "$f" > /dev/null
+            else
+              echo "$input" | python slopescript.py "$f" > /dev/null
+            fi
+          done
+      - name: CLI smoke test
+        run: |
+          python slopescript.py --version
+          echo 'summit
+            carve "ci run"
+          lodge' | python slopescript.py

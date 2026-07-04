@@ -1,0 +1,28 @@
+// ski_patrol.slope — error handling with patrol / patroller / avalanche
+summit
+  // Runtime wipeouts get caught by the patroller
+  patrol
+    carve 10 / 0
+  patroller (whoops)
+    carve "⛑️ Patrol caught a wipeout:", whoops
+  runout
+
+  // Trigger your own avalanche with any value — even a locker
+  trick openTrail(name, snowDepth)
+    greenCircle (snowDepth < 6)
+      avalanche { trail: name, reason: "not enough snow" }
+    runout
+    carve "✅", name, "is open!"
+  nail
+
+  liftline attempt in [["Corbet's", 24], ["Bunny Hill", 2]]
+    patrol
+      openTrail(attempt[0], attempt[1])
+    patroller (report)
+      carve "🚧", report.trail, "is closed:", report.reason
+    runout
+  runout
+
+  carve
+  carve "All trails checked. Ski safe!"
+lodge
