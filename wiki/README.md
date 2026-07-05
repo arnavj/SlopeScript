@@ -65,11 +65,19 @@ Re-run it any time these sources change.
 ```bash
 git clone https://github.com/arnavj/SlopeScript.wiki.git /tmp/ss-wiki
 cp wiki/*.md /tmp/ss-wiki/
+rm -f /tmp/ss-wiki/README.md          # this file is not a wiki page
 cd /tmp/ss-wiki
 git add -A
-git commit -m "Update wiki from main repo wiki/ sources"
+git -c user.email="951585+arnavj@users.noreply.github.com" \
+    commit -m "Update wiki from main repo wiki/ sources"
 git push
 ```
+
+> **Heads up — GitHub error `GH007`** ("your push would publish a private email
+> address"): that means the commit was authored with a private email while
+> *Settings → Emails → Block command line pushes that expose my email* is on.
+> Commit with your `@users.noreply.github.com` address instead (as above) — the
+> `publish.sh` script already does this for you.
 
 ## Editing
 

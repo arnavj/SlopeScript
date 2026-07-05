@@ -17,6 +17,13 @@ set -euo pipefail
 
 WIKI_REMOTE="https://github.com/arnavj/SlopeScript.wiki.git"
 
+# Author identity for the wiki commit. Defaults to a GitHub no-reply address so
+# the push is never rejected by GitHub's email-privacy protection (error GH007,
+# "your push would publish a private email address"). Override with the
+# environment variables if you publish under a different account.
+WIKI_AUTHOR_NAME="${WIKI_AUTHOR_NAME:-Arnav}"
+WIKI_AUTHOR_EMAIL="${WIKI_AUTHOR_EMAIL:-951585+arnavj@users.noreply.github.com}"
+
 # Directory this script lives in (the wiki/ source dir).
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -45,7 +52,14 @@ if git diff --cached --quiet; then
   exit 0
 fi
 
-git commit -m "Update wiki from main repo wiki/ sources"
+# Commit with an explicit, hide-able identity so the run doesn't depend on the
+# machine's git config and can't trip GitHub's email-privacy push protection.
+git -c user.name="$WIKI_AUTHOR_NAME" -c user.email="$WIKI_AUTHOR_EMAIL" \
+    commit -F - <<'MSG'
+Update wiki from main repo wiki/ sources
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+MSG
 echo "🚀 Pushing to the wiki…"
 git push
 echo "✅ Published: https://github.com/arnavj/SlopeScript/wiki"
