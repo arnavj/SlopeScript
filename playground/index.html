@@ -97,8 +97,9 @@
   <p class="hint">
     <b>How it works:</b> the real SlopeScript interpreter (Python, single file) runs in your
     browser via WebAssembly (Pyodide) — nothing is sent to a server. <code>chairlift(...)</code>
-    input pops up a browser prompt. An infinite <code>gondola</code> will freeze the tab, so keep
-    a <code>bail</code> handy (refresh if you get buried). Docs:
+    input pops up a browser prompt. Runs are capped at 15&nbsp;seconds, so an endless
+    <code>gondola</code> stops itself with a ski-patrol report instead of hanging forever (the
+    tab may pause until the cap; time spent at a <code>chairlift</code> prompt doesn't count). Docs:
     <a href="https://github.com/arnavj/slopescript/blob/main/LANGUAGE_SPEC.md" target="_blank" rel="noopener">language spec</a>.
   </p>
 </div>
@@ -299,18 +300,28 @@ async function boot() {
     if (!resp.ok) throw new Error('could not fetch slopescript.py (' + resp.status + ')');
     pyodide.FS.writeFile('slopescript.py', await resp.text());
     pyodide.runPython(`
-import io, sys, contextlib
+import io, sys, time, contextlib
 sys.setrecursionlimit(8000)
 import slopescript as S
+
+# Wall-clock budget for a single run. A program that blows past this (an
+# endless gondola, say) is stopped with a ski-patrol report instead of
+# freezing the tab forever. Time spent waiting for chairlift input doesn't
+# count against it — see credit_wait below.
+RUN_BUDGET_SECONDS = 15
 
 class _JSWriter(io.TextIOBase):
     def __init__(self, cb): self.cb = cb
     def write(self, s):
         self.cb(s); return len(s)
 
-def _make_input(js_prompt):
+def _make_input(js_prompt, interp):
     def _input(prompt=''):
+        started = time.monotonic()
         v = js_prompt(str(prompt))
+        # The visitor may have sat on the prompt for a while; give that time
+        # back so slow typers don't get cut off mid-program.
+        interp.credit_wait(time.monotonic() - started)
         if v is None:
             raise EOFError
         return str(v)
@@ -318,15 +329,19 @@ def _make_input(js_prompt):
 
 def web_run(code, js_write, js_prompt):
     import builtins
-    builtins.input = _make_input(js_prompt)
-    writer = _JSWriter(js_write)
     interp = S.Interpreter()
+    interp.deadline = time.monotonic() + RUN_BUDGET_SECONDS
+    builtins.input = _make_input(js_prompt, interp)
+    writer = _JSWriter(js_write)
     try:
         with contextlib.redirect_stdout(writer):
             S.run_source(code, interp)
         return ""
     except S.SlopeError as e:
         return S.report_error(e)
+    except S.SlopeTimeout:
+        return ("⛑️  Ski patrol stopped your run — it ran too long "
+                "(over the {}s limit — check for an endless gondola).".format(RUN_BUDGET_SECONDS))
     except RecursionError:
         return "⛑️  Ski Patrol Report: the program went too deep — avalanche risk"
 `);

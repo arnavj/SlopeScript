@@ -16,12 +16,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import time  # noqa: E402
+
 from slopescript import (  # noqa: E402
     AvalancheError,
     Interpreter,
     SlopeError,
     SlopeRuntimeError,
     SlopeSyntaxError,
+    SlopeTimeout,
     compile_source,
     format_value,
     run_source,
@@ -925,6 +928,52 @@ class TestErrorReporting(unittest.TestCase):
         with self.assertRaises(SlopeSyntaxError) as ctx:
             compile_source('summit\nrunout\nlodge')
         self.assertIn("nothing to close", str(ctx.exception))
+
+
+class TestRunBudget(unittest.TestCase):
+    """The optional wall-clock budget the web playground uses to stop runaway
+    programs. It is off by default (CLI/REPL) and only trips inside loops."""
+
+    def _run_with_budget(self, code, seconds):
+        interp = Interpreter()
+        interp.deadline = time.monotonic() + seconds
+        out = io.StringIO()
+        with redirect_stdout(out):
+            run_source(code, interp)
+        return out.getvalue()
+
+    def test_endless_gondola_stops(self):
+        with self.assertRaises(SlopeTimeout):
+            self._run_with_budget(
+                program('gondola (powder)\n  pack x = 1\nrunout'), 0.3)
+
+    def test_huge_liftline_stops(self):
+        with self.assertRaises(SlopeTimeout):
+            self._run_with_budget(
+                program('liftline i in laps(100000000)\n  pack x = i\nrunout'), 0.3)
+
+    def test_finite_program_completes(self):
+        out = self._run_with_budget(
+            program('pack t = 0\nliftline i in laps(1000)\n  t += i\nrunout\ncarve t'), 15)
+        self.assertEqual(out, "499500\n")
+
+    def test_patroller_cannot_swallow_timeout(self):
+        # A runaway loop wrapped in patrol must still be stopped.
+        with self.assertRaises(SlopeTimeout):
+            self._run_with_budget(program(
+                'patrol\n  gondola (powder)\n    pack x = 1\n  runout\n'
+                'patroller (e)\n  carve "caught"\nrunout'), 0.3)
+
+    def test_credit_wait_extends_deadline(self):
+        interp = Interpreter()
+        interp.deadline = time.monotonic() + 0.05
+        interp.credit_wait(100)  # e.g. time the visitor spent at a prompt
+        interp._tick()  # must not raise despite the tiny original budget
+
+    def test_no_budget_by_default(self):
+        # Interpreter with no deadline (the CLI/REPL default) is never limited.
+        out = run(program('pack t = 0\nliftline i in laps(5000)\n  t += i\nrunout\ncarve t'))
+        self.assertEqual(out, "12497500\n")
 
 
 if __name__ == '__main__':

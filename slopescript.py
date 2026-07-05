@@ -86,6 +86,17 @@ class StompSignal(Exception):
         self.line = line
 
 
+class SlopeTimeout(Exception):
+    """A run exceeded its wall-clock budget (used by the web playground).
+
+    Deliberately NOT a SlopeError, so patroller can't catch it — a runaway
+    program can't hide inside a patrol block and outrun the timeout."""
+
+    def __init__(self, message: str = "the run took too long"):
+        super().__init__(message)
+        self.message = message
+
+
 # ---------------------------------------------------------------------------
 # Lexer
 # ---------------------------------------------------------------------------
@@ -1419,6 +1430,22 @@ class Interpreter:
         self.loaded_trails: set = set()   # absolute paths already traversed
         self.loading_trails: set = set()  # traversal in progress (cycle guard)
         self.dir_stack: List[str] = []    # directory context for relative traverses
+        # Optional wall-clock budget: a time.monotonic() cutoff after which
+        # loops raise SlopeTimeout. Left as None (no limit) for the CLI/REPL;
+        # the browser playground sets it so an endless gondola can't hang a tab.
+        self.deadline: Optional[float] = None
+
+    def _tick(self):
+        """Stop a run that has blown its wall-clock budget. Called once per
+        loop iteration — the only place SlopeScript can spin unboundedly."""
+        if self.deadline is not None and time.monotonic() > self.deadline:
+            raise SlopeTimeout()
+
+    def credit_wait(self, seconds: float):
+        """Push the deadline forward to exclude time the interpreter spent
+        blocked (e.g. waiting for chairlift input) from the compute budget."""
+        if self.deadline is not None:
+            self.deadline += seconds
 
     # -- statements ---------------------------------------------------------
 
@@ -1452,6 +1479,7 @@ class Interpreter:
         elif kind == 'gondola':
             _, condition, body, line = stmt
             while is_truthy(self.evaluate(condition, env)):
+                self._tick()
                 try:
                     self.run(body, env)
                 except BailSignal:
@@ -1465,6 +1493,7 @@ class Interpreter:
             items = self.iterate(iterable, line)
             env.declare(var, None)
             for item in items:
+                self._tick()
                 env.declare(var, item)
                 try:
                     self.run(body, env)
