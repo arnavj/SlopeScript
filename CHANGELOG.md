@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.3.0 — 2026-10-08
+
+The "errors that point" release: when a run wipes out, the report shows you
+where, how you got there, and what you probably meant.
+
+### Added
+- **Source excerpts**: every error report prints the offending line of
+  code under the headline, with its line number in a gutter.
+- **Trail map**: runtime errors list the tricks they fell through,
+  innermost first (`↳ in trick 'pace', called from line 12`). Deep
+  recursion folds into one line (`(x199)`) instead of 200.
+- **Did-you-mean**: unknown names, unknown tricks, and missing locker keys
+  suggest the closest packed name, builtin, keyword, or key
+  (`'spead' is not packed — did you mean 'speed'?`).
+- **`slope check <files...>`**: syntax-check programs without running them.
+  Nothing is carved, read, written, or fetched. CI now checks every example.
+
+### Changed
+- `bail` / `sendIt` outside a loop and `stomp` outside a trick are now
+  syntax errors, caught before the run starts (they were runtime errors).
+- Errors inside a traversed file now name that file and line, with a
+  `↳ while traversing, from main.slope, line 2` entry in the trail map,
+  instead of naming the main file and appending `(while traversing ...)`.
+  The same goes for a trick that was written in a traversed file.
+- Syntax errors spell keywords the way you type them
+  (`expected 'blueSquare'`, not `expected 'blue'`).
+
+### Fixed
+- `bail` or `sendIt` inside a trick silently broke or continued the
+  *caller's* loop. It is now a syntax error that explains a trick can't
+  reach its caller's loop.
+
 ## 2.2.0 — 2026-07-04
 
 The radio release: SlopeScript programs can talk to the internet.

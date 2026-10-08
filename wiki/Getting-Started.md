@@ -52,6 +52,7 @@ Now you can run programs and start the REPL from anywhere:
 ```bash
 slope examples/hello.slope   # run a program
 slope                        # start the interactive REPL
+slope check examples/*.slope # check syntax without running anything
 slope --version              # print the version
 slope --help                 # usage
 ```

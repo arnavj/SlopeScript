@@ -5,7 +5,7 @@ things line by line without writing a file.
 
 ```
 $ slope
-🏔️  SlopeScript 2.2.0 — fresh corduroy, no waiting.
+🏔️  SlopeScript 2.3.0 — fresh corduroy, no waiting.
 
 ⛷️  pack x = 21
 ⛷️  x * 2

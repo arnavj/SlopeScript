@@ -10,7 +10,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -25,8 +25,10 @@ from slopescript import (  # noqa: E402
     SlopeRuntimeError,
     SlopeSyntaxError,
     SlopeTimeout,
+    check_files,
     compile_source,
     format_value,
+    report_error,
     run_source,
 )
 
@@ -294,7 +296,7 @@ carve total
         self.assertEqual(run(code), "6\n")
 
     def test_bail_outside_loop_errors(self):
-        with self.assertRaises(SlopeRuntimeError):
+        with self.assertRaises(SlopeSyntaxError):
             run(program('bail'))
 
     def test_liftline_over_number_errors(self):
@@ -372,7 +374,7 @@ carve total
         self.assertIn("Unknown trick", str(ctx.exception))
 
     def test_stomp_outside_trick_errors(self):
-        with self.assertRaises(SlopeRuntimeError):
+        with self.assertRaises(SlopeSyntaxError):
             run(program('stomp 5'))
 
     def test_recursion_limit(self):
@@ -928,6 +930,167 @@ class TestErrorReporting(unittest.TestCase):
         with self.assertRaises(SlopeSyntaxError) as ctx:
             compile_source('summit\nrunout\nlodge')
         self.assertIn("nothing to close", str(ctx.exception))
+
+
+class TestPlacementRules(unittest.TestCase):
+    """bail / sendIt / stomp are checked where they're written, before the run."""
+
+    def test_bail_in_trick_cannot_break_callers_loop(self):
+        code = program('trick stop()\n  bail\nnail\n'
+                       'liftline i in laps(3)\n  stop()\nrunout')
+        with self.assertRaises(SlopeSyntaxError) as ctx:
+            run(code)
+        self.assertEqual(ctx.exception.line, 3)
+        self.assertIn("can't reach the caller's loop", ctx.exception.message)
+
+    def test_trick_defined_inside_loop_still_has_no_loop(self):
+        with self.assertRaises(SlopeSyntaxError):
+            compile_source(program('liftline i in laps(3)\n  trick f()\n    sendIt\n  nail\nrunout'))
+        with self.assertRaises(SlopeSyntaxError):
+            compile_source(program('gondola (powder)\n  pack f = trick() bail runout\nrunout'))
+
+    def test_loops_inside_tricks_are_fine(self):
+        code = program('trick firstBig(xs)\n  liftline x in xs\n'
+                       '    greenCircle (x < 10)\n      sendIt\n    runout\n'
+                       '    stomp x\n  runout\nnail\ncarve firstBig([1, 20, 30])')
+        self.assertEqual(run(code), "20\n")
+
+    def test_stomp_needs_a_trick_even_in_dead_code(self):
+        with self.assertRaises(SlopeSyntaxError):
+            compile_source(program('greenCircle (ice)\n  stomp 1\nrunout'))
+
+
+class TestDidYouMean(unittest.TestCase):
+    def _message(self, body: str) -> str:
+        with self.assertRaises(SlopeRuntimeError) as ctx:
+            run(program(body))
+        return ctx.exception.message
+
+    def test_variable_typo(self):
+        self.assertIn("did you mean 'speed'", self._message('pack speed = 3\ncarve spead'))
+
+    def test_keyword_typo(self):
+        self.assertIn("did you mean 'carve'", self._message('carv "hi"'))
+
+    def test_builtin_typo(self):
+        self.assertIn("did you mean 'length'", self._message('carve lenght([1])'))
+
+    def test_case_slip(self):
+        self.assertIn("did you mean 'groom'", self._message('carve Groom([2, 1])'))
+
+    def test_locker_key_typo(self):
+        msg = self._message('pack l = {speed: 1}\ncarve l.sped')
+        self.assertIn("did you mean 'speed'", msg)
+        msg = self._message('pack l = {speed: 1}\ncarve l["sped"]')
+        self.assertIn('did you mean "speed"', msg)
+
+    def test_no_wild_guesses(self):
+        msg = self._message('carve zzzqqq')
+        self.assertNotIn("did you mean", msg)
+        self.assertIn("pack it first", msg)
+
+
+class TestErrorReports(unittest.TestCase):
+    """report_error: headline, source excerpt, and the trail map."""
+
+    def _report(self, code: str, filename: str = "run.slope", **kwargs) -> str:
+        try:
+            with redirect_stdout(io.StringIO()):
+                run_source(code, filename=filename, **kwargs)
+        except SlopeError as e:
+            return report_error(e, filename)
+        self.fail("expected an error")
+
+    def test_excerpt_shows_offending_line(self):
+        report = self._report(program('pack a = 1\ncarve a / 0'))
+        self.assertIn("(run.slope, line 3)", report)
+        self.assertIn("3 | carve a / 0", report)
+
+    def test_syntax_error_excerpt_and_keyword_names(self):
+        report = self._report('summit\ngreenCircle (powder)\n  carve 1\nlodge\n')
+        self.assertIn("'blueSquare'", report)
+        self.assertIn("4 | lodge", report)
+
+    def test_trail_map_lists_calls_innermost_first(self):
+        report = self._report(program(
+            'trick f(n)\n  stomp n / 0\nnail\ntrick g(n)\n  stomp f(n)\nnail\ncarve g(1)'))
+        lines = report.splitlines()
+        self.assertIn("3 |   stomp n / 0", lines[1])
+        self.assertIn("in trick 'f', called from line 6", lines[2])
+        self.assertIn("in trick 'g', called from line 8", lines[3])
+
+    def test_deep_recursion_is_folded(self):
+        report = self._report(program('trick down(n)\n  stomp down(n + 1)\nnail\ndown(0)'))
+        self.assertIn("Avalanche risk", report)
+        self.assertIn("(x199)", report)
+        self.assertLess(len(report.splitlines()), 8)
+
+    def test_caught_errors_leave_no_trace(self):
+        code = program('trick boom()\n  avalanche "x"\nnail\n'
+                       'patrol\n  boom()\npatroller (e)\n  carve "caught {e}"\nrunout')
+        self.assertEqual(run(code), "caught x\n")
+
+    def test_avalanche_keeps_patroller_hint(self):
+        report = self._report(program('avalanche "storm"'))
+        self.assertTrue(report.startswith("🌨️  Avalanche (run.slope, line 2): storm"))
+        self.assertIn("No patroller caught it", report.splitlines()[-1])
+
+    def test_error_inside_traversed_file_names_that_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "lib.slope").write_text("pack ok = 1\npack x = nope\n")
+            report = self._report('summit\n  traverse "lib.slope"\nlodge\n', base_dir=d)
+        self.assertIn("lib.slope, line 2)", report)
+        self.assertIn("2 | pack x = nope", report)
+        self.assertIn("while traversing, from run.slope, line 2", report)
+
+    def test_trick_from_traversed_file_points_into_that_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "lib.slope").write_text("trick ratio(a, b)\n  stomp a / b\nnail\n")
+            report = self._report(
+                'summit\n  traverse "lib.slope"\n\n  carve ratio(1, 0)\nlodge\n', base_dir=d)
+        self.assertIn("lib.slope, line 2)", report)
+        self.assertIn("2 |   stomp a / b", report)
+        self.assertIn("in trick 'ratio', called from run.slope, line 4", report)
+
+    def test_report_without_filename(self):
+        # The web playground runs code with no filename.
+        try:
+            run(program('carve 1 / 0'))
+        except SlopeError as e:
+            report = report_error(e)
+        self.assertIn("(line 2)", report)
+        self.assertIn("2 | carve 1 / 0", report)
+
+
+class TestCheckCommand(unittest.TestCase):
+    def test_check_reports_without_running(self):
+        with tempfile.TemporaryDirectory() as d:
+            good = Path(d) / "good.slope"
+            good.write_text(program(f'writeFile("{Path(d) / "side-effect.txt"}", "x")'))
+            bad = Path(d) / "bad.slope"
+            bad.write_text(program('carve "fine"\nrunout'))
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                status = check_files([str(good), str(bad), str(Path(d) / "ghost.slope")])
+            self.assertFalse((Path(d) / "side-effect.txt").exists())
+        self.assertEqual(status, 1)
+        self.assertIn("good.slope: trail is clear", out.getvalue())
+        self.assertNotIn("fine", out.getvalue())
+        self.assertIn("nothing to close", err.getvalue())
+        self.assertIn("Can't read", err.getvalue())
+
+    def test_check_accepts_library_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            lib = Path(d) / "lib.slope"
+            lib.write_text("trick triple(n)\n  stomp n * 3\nnail\n")
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(check_files([str(lib)]), 0)
+        self.assertIn("traversed library", out.getvalue())
+
+    def test_check_needs_files(self):
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(check_files([]), 2)
 
 
 class TestRunBudget(unittest.TestCase):
