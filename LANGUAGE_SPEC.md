@@ -1,6 +1,6 @@
 # SlopeScript Language Specification 🎿
 
-Version 2.0 — the complete reference for the SlopeScript programming language.
+Version 2.3 — the complete reference for the SlopeScript programming language.
 
 SlopeScript is a dynamically-typed, imperative language with first-class
 functions, structured error handling, and a skiing-shaped syntax. Programs
@@ -203,7 +203,9 @@ runout
 ```
 
 **`bail`** exits the innermost loop. **`sendIt`** skips to its next
-iteration. Using either outside a loop is an error.
+iteration. Using either outside a loop is a syntax error. A trick body is
+its own world: `bail` inside a trick only reaches loops written inside that
+trick, never a loop in the code that called it.
 
 ## 9. Tricks (functions)
 
@@ -219,7 +221,8 @@ nail
 - Define with `trick name(param1, param2, ...)`; close with `nail` (or
   `runout`).
 - `stomp expr` returns a value ("stomp the landing"). Bare `stomp` — and
-  falling off the end of the trick — returns `whiteout`.
+  falling off the end of the trick — returns `whiteout`. `stomp` outside a
+  trick is a syntax error.
 - Calling with the wrong number of arguments is an error that names the
   expected parameters.
 - Tricks may call themselves (recursion) and each other. Recursion deeper
@@ -308,7 +311,10 @@ runout
 - Runtime wipeouts (division by zero, missing keys, bad indexing, type
   errors, tuning failures) are caught too; `name` gets the message text.
 - Patrols nest; an avalanche in a handler rides up to the next patrol out.
-- Uncaught errors stop the program with a report giving file and line.
+- Uncaught errors stop the program with a report giving file and line,
+  the offending source line, and a trail map of the tricks and traverses
+  the error passed through (innermost first). Unknown names and locker
+  keys suggest the closest match ("did you mean 'speed'?").
 - Syntax errors and the end of input (`LiftsClosed`) are not catchable.
 
 ## 13. Modules (traverse)
@@ -329,8 +335,8 @@ lodge
   are a runtime error.
 - The path may be any expression that evaluates to text. Relative paths
   resolve against the directory of the file doing the traversing.
-- Errors inside a traversed file are reported with `(while traversing ...)`
-  appended.
+- Errors inside a traversed file (or inside a trick written in one) name
+  that file and line; the trail map shows where it was traversed from.
 
 ## 14. The Base Lodge (standard library)
 
@@ -446,6 +452,8 @@ Run `slope` with no arguments for an interactive session:
   input.
 
 Piping a file into `slope` runs it as a program (`summit`/`lodge` required).
+`slope check file.slope ...` parses files and reports syntax errors without
+running anything.
 
 ## 16. Grammar
 

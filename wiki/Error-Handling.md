@@ -115,12 +115,30 @@ Two things ride right past `patroller` on purpose:
 
 ## Uncaught errors
 
-An uncaught wipeout stops the program with a friendly report naming the file and
-line:
+An uncaught wipeout stops the program with a report that names the file and
+line, shows the line itself, and lists the tricks the error fell through
+(innermost first). This is the **trail map**:
 
 ```
-⛑️  Ski Patrol Report (run.slope, line 7): Yard sale! Division by zero
+⛑️  Ski Patrol Report (run.slope, line 3): Yard sale! Division by zero
+      3 |     stomp feet / minutes
+     ↳ in trick 'pace', called from line 9
+     ↳ in trick 'report', called from line 14
 ```
+
+Deep recursion is folded into one line, like `↳ in trick 'down', called from
+line 3  (x199)`, so the report stays readable.
+
+When a name, trick, or locker key doesn't exist but something close does, the
+report suggests it:
+
+```
+⛑️  Ski Patrol Report (run.slope, line 3): 'spead' is not packed — did you mean 'speed'?
+      3 |   carve spead
+```
+
+To catch syntax errors without running a program at all, use
+`slope check run.slope`.
 
 Every SlopeScript error is designed to **teach**: what went wrong, where, and
 often how to fix it.

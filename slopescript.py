@@ -10,6 +10,7 @@ back.
 
 Usage:
     slope program.slope        run a program
+    slope check a.slope ...    check syntax without running
     slope                      start the interactive REPL
     slope --version            print version
     slope --help               show help
@@ -18,6 +19,7 @@ This file is the entire implementation: lexer, parser, interpreter,
 standard library ("the base lodge"), REPL, and CLI. Zero dependencies.
 """
 
+import difflib
 import json
 import math
 import os
@@ -28,7 +30,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # ---------------------------------------------------------------------------
 # Errors and control-flow signals
@@ -41,6 +43,12 @@ class SlopeError(Exception):
         super().__init__(message)
         self.message = message
         self.line = line
+        # Filled in as the error travels outward: which file `line` belongs
+        # to — (display name or None, source text) — and the trail map of
+        # trick calls / traverses it passed through, innermost first, as
+        # (what, line, origin) tuples.
+        self.origin: Optional[Tuple[Optional[str], str]] = None
+        self.trace: List[Tuple[str, int, Optional[Tuple[Optional[str], str]]]] = []
 
 
 class SlopeSyntaxError(SlopeError):
@@ -383,6 +391,11 @@ class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
         self.pos = 0
+        # Lexical context, so bail/sendIt/stomp in the wrong place is caught
+        # before the run starts. A trick body resets loop_depth: a bail inside
+        # a trick can't reach a loop in the code that called it.
+        self.loop_depth = 0
+        self.trick_depth = 0
 
     # -- token helpers ------------------------------------------------------
 
@@ -490,6 +503,8 @@ class Parser:
         if t == 'RUNOUT':
             raise SlopeSyntaxError("runout with no open block — there is nothing to close here", tok.line)
         if t == 'STOMP':
+            if self.trick_depth == 0:
+                raise SlopeSyntaxError("stomp outside a trick — there is nothing to land", tok.line)
             self.advance()
             expr = None
             nxt = self.current()
@@ -497,9 +512,13 @@ class Parser:
                 expr = self.parse_expression()
             return ('stomp', expr, tok.line)
         if t == 'BAIL':
+            if self.loop_depth == 0:
+                raise SlopeSyntaxError(self._no_loop_message('bail', 'bail from'), tok.line)
             self.advance()
             return ('bail', tok.line)
         if t == 'SENDIT':
+            if self.loop_depth == 0:
+                raise SlopeSyntaxError(self._no_loop_message('sendIt', 'send'), tok.line)
             self.advance()
             return ('sendit', tok.line)
         if t == 'AVALANCHE':
@@ -508,6 +527,30 @@ class Parser:
             return ('avalanche', expr, tok.line)
         # Assignment or bare expression statement.
         return self.parse_assign_or_expr()
+
+    def _no_loop_message(self, word: str, verb: str) -> str:
+        msg = f"{word} outside a loop — there is nothing to {verb}"
+        if self.trick_depth:
+            msg += (" (a trick can't reach the caller's loop — stomp a value "
+                    "and let the caller decide)")
+        return msg
+
+    def parse_loop_body(self, opened_at: int, what: str) -> List[Tuple]:
+        self.loop_depth += 1
+        try:
+            return self.parse_block({'RUNOUT'}, opened_at, what)
+        finally:
+            self.loop_depth -= 1
+
+    def parse_trick_body(self, opened_at: int, what: str) -> List[Tuple]:
+        saved_loops = self.loop_depth
+        self.loop_depth = 0
+        self.trick_depth += 1
+        try:
+            return self.parse_block({'RUNOUT'}, opened_at, what)
+        finally:
+            self.trick_depth -= 1
+            self.loop_depth = saved_loops
 
     def parse_pack(self) -> Tuple:
         tok = self.expect('PACK')
@@ -554,7 +597,7 @@ class Parser:
         self.expect('LPAREN', "gondola needs a condition, like: gondola (laps < 5)")
         condition = self.parse_expression()
         self.expect('RPAREN')
-        body = self.parse_block({'RUNOUT'}, tok.line, "gondola loop")
+        body = self.parse_loop_body(tok.line, "gondola loop")
         self.expect('RUNOUT', "close the gondola loop with runout")
         return ('gondola', condition, body, tok.line)
 
@@ -563,7 +606,7 @@ class Parser:
         var = self.expect('IDENTIFIER', "liftline needs a rider, like: liftline skier in skiers").value
         self.expect('IN', f"liftline needs 'in', like: liftline {var} in skiers")
         iterable = self.parse_expression()
-        body = self.parse_block({'RUNOUT'}, tok.line, "liftline loop")
+        body = self.parse_loop_body(tok.line, "liftline loop")
         self.expect('RUNOUT', "close the liftline loop with runout")
         return ('liftline', var, iterable, body, tok.line)
 
@@ -572,7 +615,7 @@ class Parser:
         name = self.expect('IDENTIFIER', "trick needs a name, like: trick greet(name)").value
         self.expect('LPAREN', f"trick {name} needs a parameter list, even if empty: trick {name}()")
         params = self.parse_params()
-        body = self.parse_block({'RUNOUT'}, tok.line, f"trick {name}")
+        body = self.parse_trick_body(tok.line, f"trick {name}")
         self.expect('RUNOUT', "finish the trick with nail (or runout)")
         return ('trick', name, params, body, tok.line)
 
@@ -739,7 +782,7 @@ class Parser:
             self.advance()
             self.expect('LPAREN', "an anonymous trick needs parameters, like: trick(x)")
             params = self.parse_params()
-            body = self.parse_block({'RUNOUT'}, tok.line, "anonymous trick")
+            body = self.parse_trick_body(tok.line, "anonymous trick")
             self.expect('RUNOUT', "finish the trick with nail (or runout)")
             return ('trickexpr', params, body, tok.line)
         if tok.type == 'IDENTIFIER':
@@ -804,8 +847,18 @@ TOKEN_DESCRIPTIONS = {
 }
 
 
+# Keyword token types back to the word you type ('BLUE' -> 'blueSquare').
+KEYWORD_SPELLINGS = {}
+for _word, _type in KEYWORDS.items():
+    KEYWORD_SPELLINGS.setdefault(_type, _word)
+
+
 def describe_type(token_type: str) -> str:
-    return TOKEN_DESCRIPTIONS.get(token_type, f"'{token_type.lower()}'")
+    if token_type in TOKEN_DESCRIPTIONS:
+        return TOKEN_DESCRIPTIONS[token_type]
+    if token_type in KEYWORD_SPELLINGS:
+        return f"'{KEYWORD_SPELLINGS[token_type]}'"
+    return f"'{token_type.lower()}'"
 
 
 def describe_token(tok: Optional[Token]) -> str:
@@ -816,6 +869,35 @@ def describe_token(tok: Optional[Token]) -> str:
     if tok.type == 'NUMBER':
         return f"number {tok.value}"
     return f"'{tok.value}'"
+
+
+def closest_match(word: str, candidates) -> Optional[str]:
+    """The likely intended spelling of a typo, or None if nothing is close."""
+    candidates = [c for c in candidates if isinstance(c, str) and c != word]
+    lowered = {c.lower(): c for c in candidates}
+    if word.lower() in lowered:  # pure case slip: Carve -> carve
+        return lowered[word.lower()]
+    matches = difflib.get_close_matches(word, candidates, n=1, cutoff=0.75)
+    return matches[0] if matches else None
+
+
+def missing_key_message(key: Any, locker: dict, dotted: bool = False) -> str:
+    quote = (lambda k: f"'{k}'") if dotted else format_inner
+    msg = f"This locker has no {quote(key)}"
+    held = format_value(list(locker.keys()))
+    guess = closest_match(key, locker.keys()) if isinstance(key, str) else None
+    if guess:
+        return f"{msg} — did you mean {quote(guess)}? (it holds {held})"
+    return f"{msg} — it holds {held}"
+
+
+def display_path(path: str) -> str:
+    """A path as short as possible while still openable from here."""
+    try:
+        rel = os.path.relpath(path)
+    except ValueError:  # different drive on Windows
+        return path
+    return path if rel.startswith('..') else rel
 
 
 # ---------------------------------------------------------------------------
@@ -887,13 +969,15 @@ def type_name(value: Any) -> str:
 class Trick:
     """A user-defined function. First-class: store it, pass it, stomp it."""
 
-    __slots__ = ('name', 'params', 'body', 'closure')
+    __slots__ = ('name', 'params', 'body', 'closure', 'origin')
 
-    def __init__(self, name: str, params: List[str], body: List[Tuple], closure: 'Environment'):
+    def __init__(self, name: str, params: List[str], body: List[Tuple], closure: 'Environment',
+                 origin: Optional[Tuple[Optional[str], str]] = None):
         self.name = name
         self.params = params
         self.body = body
         self.closure = closure
+        self.origin = origin  # the file the trick was written in (for error reports)
 
 
 class BuiltinRef:
@@ -1434,6 +1518,10 @@ class Interpreter:
         # loops raise SlopeTimeout. Left as None (no limit) for the CLI/REPL;
         # the browser playground sets it so an endless gondola can't hang a tab.
         self.deadline: Optional[float] = None
+        # The file whose code is running right now — (display name, source).
+        # Line numbers are per-file, so errors need this to point at the
+        # right trail when tricks and traverses cross file boundaries.
+        self.origin: Optional[Tuple[Optional[str], str]] = None
 
     def _tick(self):
         """Stop a run that has blown its wall-clock budget. Called once per
@@ -1504,7 +1592,7 @@ class Interpreter:
 
         elif kind == 'trick':
             _, name, params, body, line = stmt
-            env.declare(name, Trick(name, params, body, env))
+            env.declare(name, Trick(name, params, body, env, self.origin))
 
         elif kind == 'stomp':
             _, expr, line = stmt
@@ -1568,15 +1656,18 @@ class Interpreter:
             raise SlopeRuntimeError(f"Can't traverse to '{path}': {e.strerror or 'trail not found'}", line)
         self.loading_trails.add(full)
         self.dir_stack.append(os.path.dirname(full))
+        caller_origin = self.origin
+        self.origin = (display_path(full), source)
         try:
             ast = compile_source(source, snippet=True)
             self.run(ast, self.globals)
         except SlopeError as e:
-            if '(while traversing' not in e.message:
-                e.message = f"{e.message} (while traversing {path})"
-                e.args = (e.message,)
+            if e.origin is None:
+                e.origin = self.origin
+            e.trace.append(('traverse', line, caller_origin))
             raise
         finally:
+            self.origin = caller_origin
             self.dir_stack.pop()
             self.loading_trails.discard(full)
         self.loaded_trails.add(full)
@@ -1647,6 +1738,9 @@ class Interpreter:
             ref = BUILTINS.get(name)
             if ref is not None:
                 return ref
+            guess = self.suggest_name(name, env)
+            if guess:
+                raise SlopeRuntimeError(f"'{name}' is not packed — did you mean '{guess}'?", expr[2])
             raise SlopeRuntimeError(f"'{name}' is not packed — pack it first, like: pack {name} = ...",
                                     expr[2])
 
@@ -1675,7 +1769,7 @@ class Interpreter:
 
         if kind == 'trickexpr':
             _, params, body, line = expr
-            return Trick('(anonymous)', params, body, env)
+            return Trick('(anonymous)', params, body, env, self.origin)
 
         if kind == 'rack':
             return [self.evaluate(e, env) for e in expr[1]]
@@ -1695,8 +1789,7 @@ class Interpreter:
             if isinstance(container, dict):
                 if name in container:
                     return container[name]
-                raise SlopeRuntimeError(f"This locker has no '{name}' — "
-                                        f"it holds {format_value(list(container.keys()))}", line)
+                raise SlopeRuntimeError(missing_key_message(name, container, dotted=True), line)
             raise SlopeRuntimeError(f"Can't look up .{name} on {type_name(container)}", line)
 
         if kind == 'callexpr':
@@ -1716,6 +1809,16 @@ class Interpreter:
                 return -operand
         raise SlopeRuntimeError(f"Unknown expression: {kind}")  # pragma: no cover
 
+    @staticmethod
+    def suggest_name(name: str, env: Environment) -> Optional[str]:
+        """Closest packed name, base lodge function, or keyword to a typo."""
+        names = set(BUILTINS) | set(KEYWORDS)
+        scope: Optional[Environment] = env
+        while scope is not None:
+            names.update(scope.vars)
+            scope = scope.parent
+        return closest_match(name, names)
+
     def get_item(self, container: Any, index: Any, line: int) -> Any:
         if isinstance(container, (list, str)):
             if isinstance(index, bool) or not isinstance(index, int):
@@ -1730,8 +1833,7 @@ class Interpreter:
         if isinstance(container, dict):
             if index in container:
                 return container[index]
-            raise SlopeRuntimeError(f"This locker has no {format_inner(index)} — "
-                                    f"it holds {format_value(list(container.keys()))}", line)
+            raise SlopeRuntimeError(missing_key_message(index, container), line)
         raise SlopeRuntimeError(f"Can't index into {type_name(container)}", line)
 
     def call(self, name: str, arg_exprs: List[Tuple], env: Environment, line: int) -> Any:
@@ -1753,6 +1855,9 @@ class Interpreter:
 
         target = BUILTINS.get(name)
         if target is None:
+            guess = self.suggest_name(name, env)
+            if guess:
+                raise SlopeRuntimeError(f"Unknown trick '{name}' — did you mean '{guess}'?", line)
             raise SlopeRuntimeError(f"Unknown trick '{name}' — define it with: "
                                     f"trick {name}(...) ... nail", line)
         return self.call_value(target, args, line)
@@ -1785,11 +1890,19 @@ class Interpreter:
         for param, arg in zip(trick.params, args):
             local.declare(param, arg)
         self.trick_depth += 1
+        caller_origin = self.origin
+        self.origin = trick.origin
         try:
             self.run(trick.body, local)
         except StompSignal as s:
             return s.value
+        except SlopeError as e:
+            if e.origin is None:
+                e.origin = trick.origin
+            e.trace.append((trick.name, line, caller_origin))
+            raise
         finally:
+            self.origin = caller_origin
             self.trick_depth -= 1
         return None
 
@@ -1917,20 +2030,31 @@ def compile_source(code: str, snippet: bool = False) -> List[Tuple]:
 
 
 def run_source(code: str, interpreter: Optional[Interpreter] = None, snippet: bool = False,
-               base_dir: Optional[str] = None):
-    """Parse and execute SlopeScript source. Raises SlopeError on failure."""
+               base_dir: Optional[str] = None, filename: Optional[str] = None):
+    """Parse and execute SlopeScript source. Raises SlopeError on failure;
+    the error's .origin/.trace say where it happened, for report_error."""
     interp = interpreter or Interpreter()
     if base_dir and not interp.dir_stack:
         interp.dir_stack.append(base_dir)
-    ast = compile_source(code, snippet=snippet)
+    origin = (filename, code)
+    caller_origin = interp.origin
+    interp.origin = origin
     try:
-        interp.run(ast)
-    except BailSignal as s:
-        raise SlopeRuntimeError("bail outside a loop — there is nothing to bail from", s.line)
-    except SendItSignal as s:
-        raise SlopeRuntimeError("sendIt outside a loop — there is nothing to send", s.line)
-    except StompSignal as s:
-        raise SlopeRuntimeError("stomp outside a trick — there is nothing to land", s.line)
+        ast = compile_source(code, snippet=snippet)
+        try:
+            interp.run(ast)
+        except BailSignal as s:  # pragma: no cover — the parser rejects these
+            raise SlopeRuntimeError("bail outside a loop — there is nothing to bail from", s.line)
+        except SendItSignal as s:  # pragma: no cover
+            raise SlopeRuntimeError("sendIt outside a loop — there is nothing to send", s.line)
+        except StompSignal as s:  # pragma: no cover
+            raise SlopeRuntimeError("stomp outside a trick — there is nothing to land", s.line)
+    except SlopeError as e:
+        if e.origin is None:
+            e.origin = origin
+        raise
+    finally:
+        interp.origin = caller_origin
     return interp
 
 
@@ -1943,18 +2067,84 @@ def run_slopescript(code: str):
         sys.exit(1)
 
 
+MAX_TRAIL_MAP = 10  # frames shown before the middle of a deep trail map is folded
+
+
 def report_error(err: SlopeError, filename: Optional[str] = None) -> str:
+    """Render an error for humans: headline, the offending source line, and a
+    trail map of the tricks and traverses it fell through.
+
+    `filename` names the main program; errors from traversed files carry
+    their own name in err.origin."""
+    origin = err.origin
+    name = origin[0] if origin and origin[0] else filename
     where = ''
     if err.line is not None:
         where = f"line {err.line}"
-        if filename:
-            where = f"{filename}, {where}"
+        if name:
+            where = f"{name}, {where}"
         where = f" ({where})"
     if isinstance(err, SlopeSyntaxError):
-        return f"🚧 Trail closed{where}: {err.message}"
+        headline = f"🚧 Trail closed{where}: {err.message}"
+    elif isinstance(err, AvalancheError):
+        headline = f"🌨️  Avalanche{where}: {err.message}"
+    else:
+        headline = f"⛑️  Ski Patrol Report{where}: {err.message}"
+
+    lines = [headline]
+    excerpt = source_excerpt(origin[1] if origin else None, err.line)
+    if excerpt:
+        lines.append(excerpt)
+    lines.extend(trail_map(err, name, filename))
     if isinstance(err, AvalancheError):
-        return f"🌨️  Avalanche{where}: {err.message}\n⛑️  No patroller caught it — wrap risky code in patrol ... patroller (whoops) ... runout"
-    return f"⛑️  Ski Patrol Report{where}: {err.message}"
+        lines.append("⛑️  No patroller caught it — wrap risky code in patrol ... patroller (whoops) ... runout")
+    return '\n'.join(lines)
+
+
+def source_excerpt(source: Optional[str], line: Optional[int]) -> str:
+    """The offending line of code, with its line number in a gutter."""
+    if source is None or line is None:
+        return ''
+    src_lines = source.splitlines()
+    if not 1 <= line <= len(src_lines):
+        return ''
+    text = src_lines[line - 1].expandtabs(2).rstrip()
+    if not text.strip():
+        return ''
+    if len(text) > 100:
+        text = text[:97] + '...'
+    return f"   {line:>4} | {text}"
+
+
+def trail_map(err: SlopeError, error_file: Optional[str], main_file: Optional[str]) -> List[str]:
+    """'↳ in trick ...' lines, innermost first, with recursion folded."""
+    if not err.trace:
+        return []
+    entries: List[str] = []
+    for what, line, origin in err.trace:
+        where = f"line {line}"
+        frame_file = (origin[0] if origin else None) or main_file
+        if frame_file and frame_file != error_file:
+            where = f"{frame_file}, {where}"
+        if what == 'traverse':
+            entries.append(f"while traversing, from {where}")
+        else:
+            entries.append(f"in trick '{what}', called from {where}")
+    # Fold runs of identical frames (deep recursion) into one line.
+    folded: List[str] = []
+    i = 0
+    while i < len(entries):
+        j = i
+        while j < len(entries) and entries[j] == entries[i]:
+            j += 1
+        count = j - i
+        folded.append(entries[i] + (f"  (x{count})" if count > 1 else ''))
+        i = j
+    if len(folded) > MAX_TRAIL_MAP:
+        hidden = len(folded) - MAX_TRAIL_MAP
+        folded = (folded[:MAX_TRAIL_MAP - 3] + [f"... {hidden} more ..."] +
+                  folded[-3:])
+    return [f"     ↳ {entry}" for entry in folded]
 
 
 # ---------------------------------------------------------------------------
@@ -2028,15 +2218,7 @@ def repl():  # pragma: no cover — interactive
 
 
 def run_snippet(code: str, interp: Interpreter):
-    ast = compile_source(code, snippet=True)
-    try:
-        interp.run(ast)
-    except BailSignal:
-        raise SlopeRuntimeError("bail outside a loop — there is nothing to bail from")
-    except SendItSignal:
-        raise SlopeRuntimeError("sendIt outside a loop — there is nothing to send")
-    except StompSignal:
-        raise SlopeRuntimeError("stomp outside a trick — there is nothing to land")
+    run_source(code, interp, snippet=True)
 
 
 # ---------------------------------------------------------------------------
@@ -2049,6 +2231,7 @@ USAGE = f"""\
 Usage:
   slope <program.slope>     run a program
   slope run <program.slope> same thing, more explicit
+  slope check <files...>    check syntax without running anything
   slope                     start the interactive REPL
   slope --version           print the version
   slope --help              this message
@@ -2077,6 +2260,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args[0] == 'repl':
         repl()
         return 0
+    if args[0] == 'check':
+        return check_files(args[1:])
     if args[0] == 'run':
         args = args[1:]
         if not args:
@@ -2096,12 +2281,45 @@ def main(argv: Optional[List[str]] = None) -> int:
     return run_file_source(source, filename)
 
 
+def check_files(filenames: List[str]) -> int:
+    """`slope check`: parse each file and report syntax problems without
+    running anything (no output, no input, no network, no file writes)."""
+    if not filenames:
+        print("🚧 'slope check' needs at least one file, like: slope check examples/*.slope",
+              file=sys.stderr)
+        return 2
+    status = 0
+    for filename in filenames:
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                source = f.read()
+        except OSError as e:
+            print(f"🚧 Can't read {filename}: {e.strerror or e}", file=sys.stderr)
+            status = 2 if status == 0 else status
+            continue
+        try:
+            # Snippet mode, like traverse: library files may skip summit/lodge.
+            tokens = Lexer(source).tokenize()
+            Parser(tokens).parse_snippet()
+        except SlopeError as e:
+            e.origin = (filename, source)
+            print(report_error(e, filename), file=sys.stderr)
+            status = 1
+            continue
+        if tokens and tokens[0].type == 'SUMMIT':
+            print(f"✅ {filename}: trail is clear")
+        else:
+            print(f"✅ {filename}: trail is clear (no summit/lodge — fine for a traversed "
+                  "library, but it can't be run on its own)")
+    return status
+
+
 def run_file_source(source: str, filename: str) -> int:
     base_dir = None
     if filename not in ('<stdin>',):
         base_dir = os.path.dirname(os.path.abspath(filename))
     try:
-        run_source(source, base_dir=base_dir)
+        run_source(source, base_dir=base_dir, filename=filename)
         return 0
     except SlopeError as e:
         print(report_error(e, filename), file=sys.stderr)

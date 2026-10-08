@@ -88,12 +88,17 @@ lodge
 
 ## Errors inside a traversed file
 
-If a traversed file wipes out, the report tells you it happened while
-traversing, so you know which trail the problem is on:
+If a traversed file wipes out, the report names that file and line, shows
+the line, and the trail map says where it was traversed from:
 
 ```
-⛑️  Ski Patrol Report (lib/slopemath.slope, line 8): ... (while traversing lib/slopemath.slope)
+⛑️  Ski Patrol Report (lib/slopemath.slope, line 8): Yard sale! Division by zero
+      8 |   pack ratio = rise / 0
+     ↳ while traversing, from tour.slope, line 2
 ```
+
+The same applies to a trick written in a traversed file: the report points
+into the file where the trick lives, and the trail map shows the call.
 
 ## Summary
 

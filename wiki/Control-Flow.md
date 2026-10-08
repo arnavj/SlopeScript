@@ -121,7 +121,10 @@ liftline n in laps(100)
 runout
 ```
 
-Using `bail` or `sendIt` **outside a loop** is an error.
+Using `bail` or `sendIt` **outside a loop** is a syntax error, caught before
+the program runs. That includes a trick body: a `bail` inside a trick can only
+leave loops written inside that trick, never the loop of whoever called it. To
+stop the caller's loop, `stomp` a value and let the caller `bail`.
 
 ## A note on blocks and `runout`
 

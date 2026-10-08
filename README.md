@@ -12,7 +12,7 @@
 <p align="center">
   <img alt="Python 3.8+" src="https://img.shields.io/badge/python-3.8%2B-blue">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.2.0-orange">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.3.0-orange">
   <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-brightgreen">
 </p>
 
@@ -65,6 +65,7 @@ That gives you the `slope` command:
 
 ```bash
 slope examples/hello.slope   # run a program
+slope check examples/*.slope # check syntax without running anything
 slope                        # interactive REPL
 slope --version
 ```
@@ -338,7 +339,7 @@ the gap:
 ## 🧪 Development
 
 ```bash
-python3 -m unittest discover tests    # run the test suite (126 tests)
+python3 -m unittest discover tests    # run the test suite (154 tests)
 ```
 
 The whole language lives in [`slopescript.py`](slopescript.py) — lexer, parser,
